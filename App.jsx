@@ -886,7 +886,7 @@ function AdminView({ onSwitch, C, mode, toggle }) {
         <div style={{ fontSize: 8, color: C.douDim, fontFamily: "'Gotham',sans-serif", marginTop: 10, letterSpacing: "0.03em" }}>Powered by <span style={{ color: C.dourado }}>Vitória Rocha</span> adaptado para <span style={{ color: C.dourado }}>Monte Dourado</span>.</div>
       </div>
     </footer>
-  </div>;
+  </div></>;
 }
 
 /* ============================================================
