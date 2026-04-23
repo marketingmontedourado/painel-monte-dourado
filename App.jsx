@@ -366,7 +366,13 @@ function SocioView({ onSwitch, C, mode, toggle }) {
   // ============================
   // RENDER
   // ============================
-  return (
+  return (<>
+    <style>{`
+      *::-webkit-scrollbar { width: 6px; height: 6px; }
+      *::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); border-radius: 3px; }
+      *::-webkit-scrollbar-thumb { background: rgba(196,167,108,0.3); border-radius: 3px; }
+      *::-webkit-scrollbar-thumb:hover { background: rgba(196,167,108,0.5); }
+    `}</style>
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Gotham','Inter',-apple-system,sans-serif", display: "flex" }}>
 
       {/* ===== SIDEBAR (desktop) ===== */}
@@ -603,7 +609,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false} />
                           <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} />
                           <YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={v => `R$${fmt(v)}`} width={50} />
-                          <Tooltip content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4", fontWeight: 500 }}>R$ {payload[0].value?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>Meta {payload[0]?.payload?.meta?.toLocaleString("pt-BR")} · Google {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div></div> : null} />
+                          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4", fontWeight: 500 }}>R$ {payload[0].value?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>Meta {payload[0]?.payload?.meta?.toLocaleString("pt-BR")} · Google {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div></div> : null} />
                           <Bar dataKey="Vila do Morro" radius={[4, 4, 0, 0]} fill="#6B8F7B" />
                         </BarChart>
                       </ResponsiveContainer>
@@ -662,7 +668,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
         </footer>
       </div>{/* end content area */}
     </div>
-  );
+  </>);
 }
 /* ============================================================
    VISÃO DA VITÓRIA (ADMIN)
@@ -712,7 +718,12 @@ function AdminView({ onSwitch, C, mode, toggle }) {
     btnOut: { padding: "13px 24px", background: "transparent", color: C.sec, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer" },
   };
 
-  return <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Gotham','Inter',-apple-system,sans-serif" }}>
+  return <><style>{`
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb { background: rgba(196,167,108,0.3); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(196,167,108,0.5); }
+  `}</style><div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'Gotham','Inter',-apple-system,sans-serif" }}>
     <header style={{ background: C.bg + "ee", borderBottom: `1px solid ${C.glassBd}`, padding: mob ? "10px 14px" : "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 10, color: C.dourado, letterSpacing: "0.12em", textTransform: "uppercase", padding: "4px 8px", fontFamily: "'Marisa',serif", border: `1px solid ${C.dourado}33`, borderRadius: 4 }}>Admin</span>
