@@ -33,20 +33,21 @@ const themes = {
 
 const brands = [
   { id: "monte-dourado", name: "Monte Dourado", short: "M. Dourado", color: "#C4A76C" },
-  { id: "vila-chapeu", name: "Vila do Chapéu", short: "V. Chapéu", color: "#7A9BBF", tag: "100% orgânico · vendido" },
-  { id: "vila-morro", name: "Vila do Morro", short: "V. Morro", color: "#6B8F7B", tag: "ADS via @monte.dourado" },
+  { id: "vila-chapeu", name: "Vila do Chapéu", short: "V. Chapéu", color: "#7A9BBF", tag: "Consolidação do bairro" },
+  { id: "vila-morro", name: "Vila do Morro", short: "V. Morro", color: "#6B8F7B", tag: "Sustentação" },
+  { id: "vila-ilha", name: "Vila da Ilha", short: "V. Ilha", color: "#D4A574", tag: "Marca em criação" },
 ];
 
 // Banco completo: todos os relatórios de todas as marcas
 const db = {
   "monte-dourado": {
     "2025-05": { seg:0, alc:5179, org:5179, pago:0, views:12449, inv:0, inter:387, vis:539, posts:8, reels:0, stories:0 },
-    "2025-08": { seg:7452, alc:274390, org:7921, pago:266469, views:686112, inv:1475, inter:3079, vis:4085, posts:10, reels:3, stories:19 },
-    "2025-09": { seg:8475, alc:363091, org:15035, pago:348056, views:1115288, inv:4158, inter:5110, vis:7894, posts:12, reels:8, stories:24 },
-    "2025-10": { seg:10864, alc:1052801, org:4955, pago:1047846, views:3790233, inv:2541, inter:14616, vis:21049, posts:8, reels:6, stories:30 },
-    "2025-11": { seg:12140, alc:456159, org:7879, pago:448280, views:1276029, inv:1806, inter:8228, vis:13143, posts:4, reels:2, stories:0 },
-    "2025-12": { seg:13403, alc:471798, org:6133, pago:465665, views:8426159, inv:1844, inter:40494, vis:64982, posts:46, reels:20, stories:124 },
-    "2026-01": { seg:14058, alc:443887, org:9717, pago:434170, views:1110622, inv:77, inter:7196, vis:12290, posts:5, reels:3, stories:6 },
+    "2025-08": { seg:7452, alc:274390, org:7921, pago:266469, views:686112, inv:1475, invGoogle:240, invSeg:1235, inter:3079, vis:4085, posts:10, reels:3, stories:19 },
+    "2025-09": { seg:8475, alc:363091, org:15035, pago:348056, views:1115288, inv:4158, invGoogle:1162, invSeg:2996, inter:5110, vis:7894, posts:12, reels:8, stories:24 },
+    "2025-10": { seg:10864, alc:1052801, org:4955, pago:1047846, views:3790233, inv:2541, invGoogle:0, invSeg:2541, inter:14616, vis:21049, posts:8, reels:6, stories:30 },
+    "2025-11": { seg:12140, alc:456159, org:7879, pago:448280, views:1276029, inv:1806, invGoogle:0, invSeg:1806, inter:8228, vis:13143, posts:4, reels:2, stories:0 },
+    "2025-12": { seg:13403, alc:471798, org:6133, pago:465665, views:8426159, inv:1844, invGoogle:0, invSeg:1844, inter:40494, vis:64982, posts:46, reels:20, stories:124 },
+    "2026-01": { seg:14058, alc:443887, org:9717, pago:434170, views:1110622, inv:77, invGoogle:0, invSeg:77, inter:7196, vis:12290, posts:5, reels:3, stories:6 },
     "2026-02": { seg:14421, alc:212738, org:7505, pago:205233, views:573959, inv:0, inter:4683, vis:5372, posts:8, reels:4, stories:12 },
     "2026-03": { seg:15031, alc:192425, org:11269, pago:181156, views:1008980, inv:0, inter:22820, vis:6594, posts:6, reels:4, stories:69 },
   },
@@ -86,8 +87,8 @@ function getAnualKpis(brandId, year) {
   if (inv > 0 && !last.seg && !last.alc) {
     return [
       { k: "Investimento " + year, v: `R$ ${fmt(inv)}`, p: `${months.length} meses`, u: true, noArrow: true },
-      { k: "Mensagens total", v: msgs.toLocaleString("pt-BR"), p: "", u: true, noArrow: true },
-      { k: "Custo/msg médio", v: `R$ ${(inv/Math.max(msgs,1)).toFixed(2).replace(".",",")}`, p: "", u: true, noArrow: true },
+      { k: "Total de mensagens", v: msgs.toLocaleString("pt-BR"), p: "", u: true, noArrow: true },
+      { k: "Custo médio por msg", v: `R$ ${(inv/Math.max(msgs,1)).toFixed(2).replace(".",",")}`, p: "", u: true, noArrow: true },
       { k: "Meses ativos", v: String(months.length), p: "", u: true, noArrow: true },
     ];
   }
@@ -97,7 +98,7 @@ function getAnualKpis(brandId, year) {
   return [
     { k: "Seguidores", v: segLast ? segLast.toLocaleString("pt-BR") : "—", p: segFirst ? `+${segGrowth}% em ${year}` : "", u: true, noArrow: true },
     { k: "Alcance " + year, v: fmt(alc), p: `${months.length} meses`, u: true, noArrow: true },
-    { k: "Views " + year, v: fmt(views), p: "", u: true, noArrow: true },
+    { k: "Visualizações " + year, v: fmt(views), p: "", u: true, noArrow: true },
     { k: "Interações " + year, v: fmt(inter), p: "", u: true, noArrow: true },
   ];
 }
@@ -107,7 +108,7 @@ function getGeralAnualKpis(year) {
   return [
     { k: "Seguidores " + year, v: seg.toLocaleString("pt-BR"), p: `${count} marcas`, u: true, noArrow: true },
     { k: "Alcance acumulado", v: fmt(alc), p: "", u: true, noArrow: true },
-    { k: "Views acumulado", v: fmt(views), p: "", u: true, noArrow: true },
+    { k: "Visualizações acumuladas", v: fmt(views), p: "", u: true, noArrow: true },
     { k: inv > 0 ? "Investimento" : "Marcas ativas", v: inv > 0 ? `R$ ${fmt(inv)}` : String(count), p: "", u: true, noArrow: true },
   ];
 }
@@ -300,6 +301,25 @@ function SocioView({ onSwitch, C, mode, toggle }) {
   const years = [...new Set(allPeriods.map(pk => pk.split("-")[0]))].sort().reverse();
   const isAnual = period?.startsWith("anual-");
 
+  // Metric evolution modal
+  const [metricModal, setMetricModal] = useState(null);
+  const [aiConclusion, setAiConclusion] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiQuestion, setAiQuestion] = useState("");
+  const metricFieldMap = { "Seguidores":"seg", "Alcance":"alc", "Visualizações":"views", "Interações":"inter", "Investimento":"inv", "Visitas":"vis", "Meta Ads":"invMeta", "Google Ads":"invGoogle", "Mensagens":"msgs" };
+  const getMetricField = (label) => { for (const [k,v] of Object.entries(metricFieldMap)) { if (label.toLowerCase().includes(k.toLowerCase())) return v; } return null; };
+  const fetchAiConclusion = async (q) => {
+    setAiLoading(true); setAiConclusion("");
+    const bid = tab === "monte-dourado" ? "monte-dourado" : (brand || "geral");
+    const data = bid === "geral" ? Object.fromEntries(brands.map(b => [b.name, db[b.id]?.[period] || {}])) : db[bid]?.[period] || {};
+    try {
+      const r = await fetch("/api/conclusion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data, period: getPeriodLabel(period), brand: brands.find(b=>b.id===bid)?.name || bid, question: q || "" }) });
+      const j = await r.json();
+      setAiConclusion(j.conclusion || j.error || "Erro ao gerar conclusão.");
+    } catch(e) { setAiConclusion("Erro de conexão. Verifique se a API está configurada."); }
+    setAiLoading(false);
+  };
+
   const currentKpis = isAnual
     ? (activeBrand ? getAnualKpis(activeBrand, period.split("-")[1]) : getGeralAnualKpis(period.split("-")[1]))
     : (activeBrand ? getKpis(activeBrand, period) : getGeralKpis(period));
@@ -319,12 +339,14 @@ function SocioView({ onSwitch, C, mode, toggle }) {
   );
 
   // === KPI CARD with progress bar ===
-  const KpiCard = ({ k, delay }) => {
+  const KpiCard = ({ k, delay, brandId }) => {
     if (!k) return null;
     const pctVal = Math.min(Math.abs(parseFloat(k.p)) || 0, 100);
     const barColor = k.u ? "#22c55e" : "#ef4444";
+    const field = getMetricField(k.k);
+    const clickable = !!field && !!brandId;
     return (
-      <div style={{ ...card, padding: mob ? "14px 12px" : "16px 14px", ...fi(delay) }}>
+      <div onClick={() => clickable && setMetricModal({ label: k.k, field, brandId })} style={{ ...card, padding: mob ? "14px 12px" : "16px 14px", cursor: clickable ? "pointer" : "default", transition: "border-color 0.2s", ...fi(delay) }} onMouseEnter={e => clickable && (e.currentTarget.style.borderColor = C.dourado+"60")} onMouseLeave={e => clickable && (e.currentTarget.style.borderColor = C.glassBd)}>
         <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>{k.k}</div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: k.p ? 10 : 0 }}>
           <span style={{ fontSize: mob ? 22 : 26, fontWeight: 500, lineHeight: 1, fontFamily: "'Marisa',serif", color: C.text }}>{k.v}</span>
@@ -350,7 +372,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
           <AreaChart data={data}>
             <defs>{visBrands.map(b => <linearGradient key={`${id}${b.id}`} id={`${id}${b.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={b.color} stopOpacity={0.25} /><stop offset="100%" stopColor={b.color} stopOpacity={0} /></linearGradient>)}</defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false} />
-            <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 10 }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 10 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 30} />
             <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={42} />
             <Tooltip content={<Tip />} />
             {visBrands.map(b => <Area key={b.id} type="monotone" dataKey={b.name} stroke={b.color} strokeWidth={2} fill={`url(#${id}${b.id})`} dot={false} activeDot={{ r: 4, fill: b.color, stroke: C.bg, strokeWidth: 2 }} />)}
@@ -509,7 +531,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
                 </div>
                 <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                    {(currentKpis || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} />)}
+                    {(currentKpis || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId={activeBrand || "monte-dourado"} />)}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
                     <ChartSection title="Alcance" suffix="_alc" id="md_alc" />
@@ -517,6 +539,52 @@ function SocioView({ onSwitch, C, mode, toggle }) {
                   </div>
                 </div>
               </div>
+
+              {/* SEÇÃO: ADS MONTE DOURADO */}
+              {(() => {
+                const d = !isAnual ? db["monte-dourado"]?.[period] : null;
+                const hasAds = d && d.inv > 0;
+                if (isAnual) {
+                  const y = period.split("-")[1];
+                  const ms = allPeriods.filter(pk => pk.startsWith(y) && db["monte-dourado"]?.[pk]?.inv > 0);
+                  if (!ms.length) return null;
+                  let tInv=0, tGoogle=0, tSeg=0;
+                  ms.forEach(pk => { const r=db["monte-dourado"][pk]; tInv+=r.inv||0; tGoogle+=r.invGoogle||0; tSeg+=r.invSeg||0; });
+                  return (
+                    <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(120) }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #4285F4" }}>
+                        <Globe size={18} color="#4285F4" strokeWidth={1.5} />
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Tráfego pago</div>
+                          <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Google Ads + Seguidores · {y}</div>
+                        </div>
+                      </div>
+                      <div style={{ padding: mob ? "12px 10px" : "14px 14px", display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 6 }}>
+                        <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Investimento total</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(tInv)}</div><div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>{ms.length} meses com ADS</div></div>
+                        <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Google Ads</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(tGoogle)}</div><div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>Palavras-chave</div></div>
+                        <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Seguidores</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(tSeg)}</div><div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>Campanhas de crescimento</div></div>
+                      </div>
+                    </div>
+                  );
+                }
+                if (!hasAds) return null;
+                return (
+                  <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(120) }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #4285F4" }}>
+                      <Globe size={18} color="#4285F4" strokeWidth={1.5} />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Tráfego pago</div>
+                        <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Google Ads + Seguidores · {getPeriodLabel(period)}</div>
+                      </div>
+                    </div>
+                    <div style={{ padding: mob ? "12px 10px" : "14px 14px", display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 6 }}>
+                      <div style={{ ...card, padding: "14px 12px" }} onClick={() => setMetricModal({ label: "Investimento", field: "inv", brandId: "monte-dourado" })} className="kpi-hover"><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Investimento total</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(d.inv)}</div></div>
+                      {d.invGoogle > 0 && <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Google Ads</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(d.invGoogle)}</div></div>}
+                      {d.invSeg > 0 && <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Seguidores</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(d.invSeg)}</div></div>}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* SEÇÃO: TIKTOK */}
               <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(200) }}>
@@ -563,19 +631,19 @@ function SocioView({ onSwitch, C, mode, toggle }) {
                   </div>
                   <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                      {(getKpis("vila-chapeu", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} />)}
+                      {(getKpis("vila-chapeu", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="vila-chapeu" />)}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
                       {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
                         return <div style={{ ...card, padding: "12px 10px 6px" }}>
                           <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Alcance</div>
-                          <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_a)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
+                          <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_a)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
                         </div>;
                       })()}
                       {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_views`] || 0 }));
                         return <div style={{ ...card, padding: "12px 10px 6px" }}>
                           <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Visualizações</div>
-                          <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_v" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_v)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
+                          <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_v" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_v)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
                         </div>;
                       })()}
                     </div>
@@ -600,14 +668,14 @@ function SocioView({ onSwitch, C, mode, toggle }) {
                   </div>
                   <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                      {(getKpis("vila-morro", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={180 + i * 50} />)}
+                      {(getKpis("vila-morro", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={180 + i * 50} brandId="vila-morro" />)}
                     </div>
                     <div style={{ ...card, padding: "12px 10px 6px" }}>
                       <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Investimento mensal</div>
                       <ResponsiveContainer width="100%" height={160}>
                         <BarChart data={invHistory} barSize={mob ? 28 : 40}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false} />
-                          <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} />
+                          <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 30} />
                           <YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={v => `R$${fmt(v)}`} width={50} />
                           <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4", fontWeight: 500 }}>R$ {payload[0].value?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>Meta {payload[0]?.payload?.meta?.toLocaleString("pt-BR")} · Google {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div></div> : null} />
                           <Bar dataKey="Vila do Morro" radius={[4, 4, 0, 0]} fill="#6B8F7B" />
@@ -632,31 +700,111 @@ function SocioView({ onSwitch, C, mode, toggle }) {
               </div>
             </>}
 
-            {/* LEITURA AUTOMÁTICA */}
+            {/* CONCLUSÃO */}
             {(() => {
-              const insights = {
-                "monte-dourado": { title: "Março consolidou conteúdo como motor de crescimento.", body: ["Interações explodiram +387% impulsionadas pelos campeonatos QS e Surf na Laje. Alcance orgânico cresceu 50%.", "Base chegou a 15.031 seguidores (+610). Visualizações saltaram 76% para mais de 1 milhão."], tag: "Mar 2026" },
-                "vila-chapeu": { title: "Vila do Chapéu opera no piloto automático.", body: ["Empreendimento vendido, perfil 100% orgânico, 707 seguidores.", "Cadência mínima preserva a base."], tag: "Abr 2026" },
-                "vila-morro": { title: "Vila do Morro investiu R$ 40,3 mil em 3 meses.", body: ["1.354 mensagens via Meta Ads. Anúncios rodam no perfil @monte.dourado."], tag: "ADS" },
-                "geral": { title: "3 marcas, 3 momentos diferentes.", body: ["Monte Dourado lidera. Vila do Chapéu opera orgânico. Vila do Morro investe em ADS."], tag: "Geral" },
-              };
-              const ins = tab === "monte-dourado" ? insights["monte-dourado"] : (insights[brand] || insights["geral"]);
+              const pl = getPeriodLabel(period);
+              function buildConclusion(bid, pk) {
+                const d = db[bid]?.[pk];
+                const bn = brands.find(b=>b.id===bid)?.name || bid;
+                if (!d) return { title: `Sem dados para ${bn} em ${pl}.`, body: ["Nenhum relatório disponível para este período."] };
+                const prevIdx = allPeriods.indexOf(pk) - 1;
+                const prev = prevIdx >= 0 ? db[bid]?.[allPeriods[prevIdx]] : null;
+                const lines = [];
+                if (d.seg) lines.push(`Base de seguidores: ${d.seg.toLocaleString("pt-BR")}.`);
+                if (d.alc) { let s = `Alcance de ${fmt(d.alc)}`; if (prev?.alc) { const v = Math.round(((d.alc-prev.alc)/prev.alc)*100); s += v >= 0 ? ` (+${v}% em relação ao mês anterior)` : ` (${v}% em relação ao mês anterior)`; } lines.push(s + "."); }
+                if (d.views) lines.push(`${fmt(d.views)} visualizações no período.`);
+                if (d.inv > 0) { lines.push(`Investimento total de R$ ${d.inv.toLocaleString("pt-BR")}${d.msgs ? ` com ${d.msgs.toLocaleString("pt-BR")} mensagens geradas` : ""}.`); }
+                if (d.inter) lines.push(`${fmt(d.inter)} interações registradas.`);
+                if (d.posts || d.reels || d.stories) { const parts = []; if(d.posts) parts.push(`${d.posts} posts`); if(d.reels) parts.push(`${d.reels} reels`); if(d.stories) parts.push(`${d.stories} stories`); if(parts.length) lines.push(`Conteúdo publicado: ${parts.join(", ")}.`); }
+                let title = `${bn} em ${pl}`;
+                if (d.inv > 0 && d.msgs) title = `${bn} investiu R$ ${fmt(d.inv)} em ${pl}.`;
+                else if (d.alc && prev?.alc) { const v = Math.round(((d.alc-prev.alc)/prev.alc)*100); title = v >= 0 ? `${bn} cresceu ${v}% em alcance em ${pl}.` : `${bn} recuou ${Math.abs(v)}% em alcance em ${pl}.`; }
+                else if (d.seg) title = `${bn}: ${d.seg.toLocaleString("pt-BR")} seguidores em ${pl}.`;
+                return { title, body: lines };
+              }
+              function buildAnualConclusion(bid, year) {
+                const months = allPeriods.filter(pk => pk.startsWith(year) && db[bid]?.[pk]);
+                if (!months.length) return { title: `Sem dados para ${year}.`, body: [] };
+                const bn = brands.find(b=>b.id===bid)?.name || bid;
+                let alc=0, views=0, inter=0, inv=0, msgs=0;
+                months.forEach(pk => { const d=db[bid][pk]; alc+=d.alc||0; views+=d.views||0; inter+=d.inter||0; inv+=d.inv||0; msgs+=d.msgs||0; });
+                const lastD = db[bid][months[months.length-1]];
+                const lines = [];
+                if (lastD?.seg) lines.push(`Base encerrou com ${lastD.seg.toLocaleString("pt-BR")} seguidores.`);
+                lines.push(`Alcance acumulado de ${fmt(alc)} em ${months.length} meses.`);
+                if (views) lines.push(`${fmt(views)} visualizações no total.`);
+                if (inv > 0) lines.push(`Investimento total de R$ ${inv.toLocaleString("pt-BR")}${msgs ? `, gerando ${msgs.toLocaleString("pt-BR")} mensagens` : ""}.`);
+                if (inter) lines.push(`${fmt(inter)} interações acumuladas.`);
+                return { title: `Resumo de ${bn} em ${year}`, body: lines };
+              }
+              function buildGeralConclusion(pk) {
+                const lines = [];
+                brands.forEach(b => { const d = db[b.id]?.[pk]; if (d) { lines.push(`${b.name}: ${d.seg ? d.seg.toLocaleString("pt-BR")+" seg" : ""}${d.alc ? ", alcance "+fmt(d.alc) : ""}${d.inv > 0 ? ", investimento R$ "+fmt(d.inv) : ""}.`); }});
+                if (!lines.length) return { title: `Sem dados gerais para ${pl}.`, body: [] };
+                return { title: `Visão geral — ${pl}`, body: lines };
+              }
+              let ins;
+              if (isAnual) {
+                const y = period.split("-")[1];
+                ins = tab === "monte-dourado" ? buildAnualConclusion("monte-dourado", y) : (brand ? buildAnualConclusion(brand, y) : { title: `Resumo geral de ${y}`, body: brands.map(b => { const ms = allPeriods.filter(pk=>pk.startsWith(y)&&db[b.id]?.[pk]); let a=0,v=0; ms.forEach(pk=>{a+=db[b.id][pk].alc||0;v+=db[b.id][pk].views||0;}); return `${b.name}: ${fmt(a)} alcance, ${fmt(v)} visualizações em ${ms.length} meses.`; }).filter(Boolean) });
+              } else {
+                ins = tab === "monte-dourado" ? buildConclusion("monte-dourado", period) : (brand ? buildConclusion(brand, period) : buildGeralConclusion(period));
+              }
               return (
                 <div style={{ ...card, padding: mob ? "14px 12px" : "16px 16px", position: "relative", overflow: "hidden", background: C.insightBg, ...fi(300) }}>
                   <div style={{ position: "absolute", top: -20, right: -20, width: 120, height: 120, background: `radial-gradient(circle,${C.dourado}15,transparent 70%)`, pointerEvents: "none" }} />
                   <div style={{ position: "relative", zIndex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 8 }}>
                       <div style={{ width: 4, height: 4, borderRadius: "50%", background: C.dourado }} />
-                      <span style={{ fontSize: 8, color: C.dourado, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Leitura automática</span>
+                      <span style={{ fontSize: 8, color: C.dourado, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Conclusão</span>
                     </div>
-                    <h3 style={{ fontSize: 14, fontWeight: 400, lineHeight: 1.4, marginBottom: 6, fontFamily: "'Marisa',serif" }}>{ins.title}</h3>
-                    {ins.body.map((p, i) => <p key={i} style={{ fontSize: 11, color: C.sec, lineHeight: 1.6, marginBottom: 4, fontFamily: "'Gotham',sans-serif" }}>{p}</p>)}
+                    <h3 style={{ fontSize: mob ? 13 : 14, fontWeight: 400, lineHeight: 1.4, marginBottom: 6, fontFamily: "'Marisa',serif", textTransform: "uppercase" }}>{ins.title}</h3>
+                    {!aiConclusion && ins.body.map((p, i) => <p key={i} style={{ fontSize: mob ? 10 : 11, color: C.sec, lineHeight: 1.6, marginBottom: 4, fontFamily: "'Gotham',sans-serif" }}>{p}</p>)}
+                    {aiConclusion && <p style={{ fontSize: mob ? 10 : 11, color: C.sec, lineHeight: 1.7, fontFamily: "'Gotham',sans-serif", whiteSpace: "pre-line" }}>{aiConclusion}</p>}
+                    <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <button onClick={() => fetchAiConclusion()} disabled={aiLoading} style={{ padding: "6px 14px", fontSize: 9, borderRadius: 6, border: `1px solid ${C.dourado}40`, background: C.dourado + "15", color: C.dourado, cursor: aiLoading ? "wait" : "pointer", fontFamily: "'Gotham',sans-serif", letterSpacing: "0.05em", textTransform: "uppercase" }}>{aiLoading ? "Gerando..." : "Gerar com IA"}</button>
+                      <input value={aiQuestion} onChange={e => setAiQuestion(e.target.value)} onKeyDown={e => e.key === "Enter" && aiQuestion && fetchAiConclusion(aiQuestion)} placeholder="Faça uma pergunta comparativa..." style={{ flex: 1, minWidth: 140, padding: "6px 10px", fontSize: 10, borderRadius: 6, border: `1px solid ${C.glassBd}`, background: "rgba(255,255,255,0.03)", color: C.text, fontFamily: "'Gotham',sans-serif", outline: "none" }} />
+                    </div>
                   </div>
                 </div>
               );
             })()}
           </>}
         </main>
+
+        {/* MODAL EVOLUÇÃO DE MÉTRICA */}
+        {metricModal && (() => {
+          const { label, field, brandId } = metricModal;
+          const bn = brands.find(b=>b.id===brandId)?.name || brandId;
+          const bColor = brands.find(b=>b.id===brandId)?.color || C.dourado;
+          const chartD = allPeriods.filter(pk => db[brandId]?.[pk]).map(pk => ({ m: periodLabels[pk], v: db[brandId][pk][field] || 0 }));
+          return (
+            <div style={{ position:"fixed", inset:0, zIndex:100, background:"rgba(0,0,0,0.7)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={() => setMetricModal(null)}>
+              <div onClick={e=>e.stopPropagation()} style={{ background:C.card, border:`1px solid ${C.glassBd}`, borderRadius:14, padding:mob?"16px 12px":"24px 20px", width:"100%", maxWidth:560, maxHeight:"80vh", overflowY:"auto", boxShadow:"0 16px 48px rgba(0,0,0,0.6)" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                  <div>
+                    <div style={{ fontSize:8, color:C.mut, letterSpacing:"0.12em", textTransform:"uppercase", fontFamily:"'Gotham',sans-serif", marginBottom:4 }}>{bn}</div>
+                    <div style={{ fontSize:16, fontWeight:400, fontFamily:"'Marisa',serif", textTransform:"uppercase", color:C.text }}>{label}</div>
+                  </div>
+                  <button onClick={() => setMetricModal(null)} style={{ background:"none", border:"none", color:C.mut, fontSize:22, cursor:"pointer", lineHeight:1 }}>&times;</button>
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={chartD}>
+                    <defs><linearGradient id="mm_g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={bColor} stopOpacity={0.3}/><stop offset="100%" stopColor={bColor} stopOpacity={0}/></linearGradient></defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/>
+                    <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 10 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 30}/>
+                    <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={50}/>
+                    <Tooltip content={<Tip/>}/>
+                    <Area type="monotone" dataKey="v" name={label} stroke={bColor} strokeWidth={2} fill="url(#mm_g)" dot={{ r:3, fill:bColor }} activeDot={{ r:5, fill:bColor, stroke:C.bg, strokeWidth:2 }}/>
+                  </AreaChart>
+                </ResponsiveContainer>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:12 }}>
+                  {chartD.map((d,i) => <div key={i} style={{ fontSize:9, color:C.sec, fontFamily:"'Gotham',sans-serif" }}><span style={{ color:C.mut }}>{d.m}:</span> <span style={{ color:C.text, fontWeight:500 }}>{field.startsWith("inv") ? `R$ ${fmt(d.v)}` : fmt(d.v)}</span></div>)}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* FOOTER */}
         <footer style={{ borderTop: `1px solid ${C.glassBd}`, padding: mob ? "16px 12px" : "18px 22px", marginTop: "auto" }}>
