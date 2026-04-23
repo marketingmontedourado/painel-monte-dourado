@@ -60,9 +60,9 @@ const db = {
     "2026-04": { seg:707, alc:377, org:377, pago:0, views:1581, inv:0, inter:21, vis:169, posts:0, reels:0, stories:0 },
   },
   "vila-morro": {
-    "2025-10": { seg:0, alc:52558, org:52558, pago:0, views:257999, inv:0, inter:1951, vis:3080, posts:33, reels:0, stories:0 },
-    "2025-11": { seg:0, alc:8480, org:8480, pago:0, views:108532, inv:0, inter:363, vis:1650, posts:3, reels:2, stories:0 },
-    "2025-12": { seg:0, alc:15212, org:15212, pago:0, views:63586, inv:0, inter:454, vis:613, posts:9, reels:0, stories:0 },
+    "2025-10": { seg:0, alc:52558, org:52558, pago:0, views:257999, inv:19604, invMeta:14864, invGoogle:4740, invSeg:0, inter:1951, vis:3080, posts:33, reels:0, stories:0, msgs:737 },
+    "2025-11": { seg:0, alc:8480, org:8480, pago:0, views:108532, inv:10601, invMeta:7100, invGoogle:3501, invSeg:0, inter:363, vis:1650, posts:3, reels:2, stories:0, msgs:203 },
+    "2025-12": { seg:0, alc:15212, org:15212, pago:0, views:63586, inv:12150, invMeta:10891, invGoogle:0, invSeg:1259, inter:454, vis:613, posts:9, reels:0, stories:0, msgs:441 },
     "2026-01": { seg:1130, alc:16444, org:16444, pago:0, views:45500, inv:19254, invMeta:12392, invGoogle:5413, invSeg:1448, inter:844, vis:784, posts:11, reels:2, stories:0, msgs:668 },
     "2026-02": { seg:1175, alc:2497, org:2497, pago:0, views:12325, inv:10293, invMeta:6740, invGoogle:2738, invSeg:815, inter:278, vis:413, posts:1, reels:1, stories:0, msgs:365 },
     "2026-03": { seg:1220, alc:4203, org:4203, pago:0, views:12376, inv:10807, invMeta:7265, invGoogle:2423, invSeg:1119, inter:389, vis:327, posts:1, reels:1, stories:0, msgs:321 },
@@ -203,7 +203,7 @@ function PeriodSelect({ period, setPeriod, mob, C }) {
       {getPeriodLabel(period)}
       <ChevronDown size={10} color={C.dourado} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
     </button>
-    {open && <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 6, zIndex: 50, minWidth: 140, maxHeight: 280, overflowY: "auto", boxShadow: "0 -8px 32px rgba(0,0,0,0.4)" }}>
+    {open && <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 6, zIndex: 50, minWidth: 140, maxHeight: 280, overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
       {[...allPeriods].reverse().map(pk => <button key={pk} onClick={() => { setPeriod(pk); setOpen(false); }} style={{ display: "block", width: "100%", padding: "9px 14px", fontSize: mob ? 12 : 11, color: period === pk ? C.dourado : C.sec, background: period === pk ? C.dourado + "18" : "transparent", border: "none", borderRadius: 6, cursor: "pointer", textAlign: "left", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Marisa',serif", transition: "background 0.15s" }}>{periodLabels[pk] || pk} {period === pk && "\u2713"}</button>)}
     </div>}
   </div>;
@@ -230,7 +230,7 @@ function YearSelect({ period, setPeriod, mob, C }) {
       {isAnual ? `Anual ${selectedYear}` : "Anual"}
       <ChevronDown size={10} color={isAnual ? C.dourado : C.mut} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
     </button>
-    {open && <div style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 6, zIndex: 50, minWidth: 120, boxShadow: "0 -8px 32px rgba(0,0,0,0.4)" }}>
+    {open && <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 6, zIndex: 50, minWidth: 120, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
       {years.map(y => <button key={y} onClick={() => { setPeriod(`anual-${y}`); setOpen(false); }} style={{ display: "block", width: "100%", padding: "9px 14px", fontSize: mob ? 12 : 11, color: selectedYear === y ? C.dourado : C.sec, background: selectedYear === y ? C.dourado + "18" : "transparent", border: "none", borderRadius: 6, cursor: "pointer", textAlign: "left", letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>{y} {selectedYear === y && "\u2713"}</button>)}
     </div>}
   </div>;
@@ -467,13 +467,13 @@ function SocioView({ onSwitch, C, mode, toggle }) {
           {tab !== "eventos" && <>
 
             {/* PERIOD FILTERS */}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, ...fi(0) }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, position: "relative", zIndex: (pOpen || yOpen) ? 50 : 1, ...fi(0) }}>
               <div data-psel style={{ position: "relative", zIndex: pOpen ? 20 : 1 }}>
                 <button onClick={() => setPOpen(!pOpen)} style={{ padding: "6px 12px", fontSize: 10, borderRadius: 6, border: `1px solid ${C.glassBd}`, background: "rgba(255,255,255,0.03)", color: C.text, cursor: "pointer", letterSpacing: "0.05em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
                   {getPeriodLabel(period)}
                   <ChevronDown size={10} color={C.mut} style={{ transform: pOpen ? "rotate(180deg)" : "none", transition: "0.2s" }} />
                 </button>
-                {pOpen && <div style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 8, padding: 4, minWidth: 130, maxHeight: 260, overflowY: "auto", boxShadow: "0 -4px 24px rgba(0,0,0,0.5)", zIndex: 30 }}>
+                {pOpen && <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 8, padding: 4, minWidth: 130, maxHeight: 260, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 30 }}>
                   {[...allPeriods].reverse().map(pk => <button key={pk} onClick={() => { setPeriod(pk); setPOpen(false); }} style={{ display: "block", width: "100%", padding: "7px 10px", fontSize: 10, color: period === pk ? C.dourado : C.sec, background: period === pk ? C.dourado + "12" : "transparent", border: "none", borderRadius: 4, cursor: "pointer", textAlign: "left", fontFamily: "'Gotham',sans-serif" }}>{periodLabels[pk]} {period === pk && "\u2713"}</button>)}
                 </div>}
               </div>
@@ -482,7 +482,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
                   {isAnual ? `Anual ${period.split("-")[1]}` : "Anual"}
                   <ChevronDown size={10} color={isAnual ? C.dourado : C.mut} style={{ transform: yOpen ? "rotate(180deg)" : "none", transition: "0.2s" }} />
                 </button>
-                {yOpen && <div style={{ position: "absolute", bottom: "calc(100% + 4px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 8, padding: 4, minWidth: 100, boxShadow: "0 -4px 24px rgba(0,0,0,0.5)", zIndex: 30 }}>
+                {yOpen && <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 8, padding: 4, minWidth: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 30 }}>
                   {years.map(y => <button key={y} onClick={() => { setPeriod(`anual-${y}`); setYOpen(false); }} style={{ display: "block", width: "100%", padding: "7px 10px", fontSize: 10, color: period === `anual-${y}` ? C.dourado : C.sec, background: period === `anual-${y}` ? C.dourado + "12" : "transparent", border: "none", borderRadius: 4, cursor: "pointer", textAlign: "left", fontFamily: "'Gotham',sans-serif" }}>{y} {period === `anual-${y}` && "\u2713"}</button>)}
                 </div>}
               </div>
