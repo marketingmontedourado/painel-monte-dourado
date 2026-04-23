@@ -10,14 +10,14 @@ const FONT_CSS = `
 
 const themes = {
   dark: {
-    bg: "#080e1a", card: "#0d1525", border: "#162034", borderL: "#1a2740",
-    text: "#F0EBE0", sec: "#B0A594", mut: "#6B5F50",
+    bg: "#080e1a", card: "#0d1525", border: "#1c3050", borderL: "#1a2740",
+    text: "#F5F0E4", sec: "#C8BDA8", mut: "#8A7D6B",
     dourado: "#C4A76C", douDim: "#6b5d45",
     up: "#22c55e", down: "#ef4444", azuL: "#3a5478",
-    glass: "rgba(13,21,37,0.8)", glassBd: "rgba(255,255,255,0.06)",
+    glass: "rgba(13,21,37,0.8)", glassBd: "rgba(255,255,255,0.10)",
     topbar: "rgba(8,14,26,0.95)", insightBg: "linear-gradient(135deg,#0d1525,#162a45)",
     sidebar: "#060b15", cardHover: "rgba(255,255,255,0.02)",
-    progressBg: "rgba(255,255,255,0.06)", progressTrack: "rgba(255,255,255,0.03)",
+    progressBg: "rgba(255,255,255,0.08)", progressTrack: "rgba(255,255,255,0.05)",
   },
   light: {
     bg: "#F5F3EE", card: "#ffffff", border: "#e2dfd9", borderL: "#eceae4",
@@ -182,8 +182,8 @@ const Tip = ({ active, payload, label }) => {
     <div style={{ fontSize: 11, color: "#C4A76C", letterSpacing: "0.1em", marginBottom: 6, textTransform: "uppercase", fontWeight: 600 }}>{label}</div>
     {payload.map((p, i) => <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, fontSize: 13 }}>
       <div style={{ width: 7, height: 7, borderRadius: "50%", background: p.color, boxShadow: `0 0 5px ${p.color}` }} />
-      <span style={{ color: "#B0A594", flex: 1, fontSize: 11 }}>{p.dataKey}</span>
-      <span style={{ color: "#F0EBE0", fontWeight: 500 }}>{fmt(p.value)}</span>
+      <span style={{ color: "#C8BDA8", flex: 1, fontSize: 11 }}>{p.dataKey}</span>
+      <span style={{ color: "#F5F0E4", fontWeight: 500 }}>{fmt(p.value)}</span>
     </div>)}
   </div>;
 };
@@ -337,7 +337,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
         <ResponsiveContainer width="100%" height={mob ? 180 : 200}>
           <AreaChart data={data}>
             <defs>{visBrands.map(b => <linearGradient key={`${id}${b.id}`} id={`${id}${b.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={b.color} stopOpacity={0.25} /><stop offset="100%" stopColor={b.color} stopOpacity={0} /></linearGradient>)}</defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false} />
             <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 10 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={42} />
             <Tooltip content={<Tip />} />
@@ -360,7 +360,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
       {/* ===== SIDEBAR (desktop) ===== */}
       {!mob && (
         <aside style={{ width: SW, position: "fixed", top: 0, left: 0, bottom: 0, background: C.sidebar || C.card, borderRight: `1px solid ${C.glassBd}`, display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 4px 12px", zIndex: 50, gap: 4 }}>
-          <div style={{ marginBottom: 14 }}><Logo lc={C.dourado} w={32} /></div>
+          <div style={{ marginBottom: 14 }}><Logo lc={C.dourado} w={48} /></div>
           <SideIcon active={tab === "monte-dourado"} label="Monte Dourado" onClick={() => { setTab("monte-dourado"); setBrand(null); }}>
             <Mountain size={16} color={tab === "monte-dourado" ? C.dourado : C.mut} strokeWidth={1.5} />
           </SideIcon>
@@ -551,13 +551,13 @@ function SocioView({ onSwitch, C, mode, toggle }) {
                       {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
                         return <div style={{ ...card, padding: "12px 10px 6px" }}>
                           <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Alcance</div>
-                          <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_a)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
+                          <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_a)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
                         </div>;
                       })()}
                       {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_views`] || 0 }));
                         return <div style={{ ...card, padding: "12px 10px 6px" }}>
                           <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Visualizações</div>
-                          <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_v" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_v)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
+                          <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_v" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_v)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
                         </div>;
                       })()}
                     </div>
@@ -588,10 +588,10 @@ function SocioView({ onSwitch, C, mode, toggle }) {
                       <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Investimento mensal</div>
                       <ResponsiveContainer width="100%" height={160}>
                         <BarChart data={invHistory} barSize={mob ? 28 : 40}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false} />
                           <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} />
                           <YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={v => `R$${fmt(v)}`} width={50} />
-                          <Tooltip content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F0EBE0", fontWeight: 500 }}>R$ {payload[0].value?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 9, color: "#B0A594", marginTop: 2 }}>Meta {payload[0]?.payload?.meta?.toLocaleString("pt-BR")} · Google {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div></div> : null} />
+                          <Tooltip content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4", fontWeight: 500 }}>R$ {payload[0].value?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>Meta {payload[0]?.payload?.meta?.toLocaleString("pt-BR")} · Google {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div></div> : null} />
                           <Bar dataKey="Vila do Morro" radius={[4, 4, 0, 0]} fill="#6B8F7B" />
                         </BarChart>
                       </ResponsiveContainer>
@@ -641,11 +641,11 @@ function SocioView({ onSwitch, C, mode, toggle }) {
         </main>
 
         {/* FOOTER */}
-        <footer style={{ borderTop: `1px solid ${C.glassBd}`, padding: mob ? "20px 12px" : "24px 22px", marginTop: "auto" }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textAlign: "center" }}>
-            <Logo lc={C.mut} w={90} />
-            <p style={{ fontSize: 9, color: C.mut, lineHeight: 1.5, fontFamily: "'Gotham',sans-serif" }}>Painel de desempenho digital · Monte Dourado Incorporações</p>
-            <div style={{ fontSize: 7, color: C.douDim, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.03em" }}>Powered by <span style={{ color: C.dourado }}>Vitória Rocha</span></div>
+        <footer style={{ borderTop: `1px solid ${C.glassBd}`, padding: mob ? "16px 12px" : "18px 22px", marginTop: "auto" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <Logo lc={C.mut} w={mob ? 70 : 90} />
+            <p style={{ fontSize: mob ? 8 : 9, color: C.mut, fontFamily: "'Gotham',sans-serif", textAlign: "center", flex: 1 }}>Painel de desempenho digital · Monte Dourado Incorporações</p>
+            <div style={{ fontSize: mob ? 7 : 8, color: C.douDim, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.03em", whiteSpace: "nowrap" }}>Powered by <span style={{ color: C.dourado }}>Vitória Rocha</span></div>
           </div>
         </footer>
       </div>{/* end content area */}
