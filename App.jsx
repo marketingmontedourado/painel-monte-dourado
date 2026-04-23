@@ -41,12 +41,12 @@ const brands = [
 const db = {
   "monte-dourado": {
     "2025-05": { seg:0, alc:5179, org:5179, pago:0, views:12449, inv:0, inter:387, vis:539, posts:8, reels:0, stories:0 },
-    "2025-08": { seg:7452, alc:274390, org:7921, pago:266469, views:686112, inv:0, inter:3079, vis:4085, posts:10, reels:3, stories:19 },
-    "2025-09": { seg:8475, alc:363091, org:15035, pago:348056, views:1115288, inv:0, inter:5110, vis:0, posts:12, reels:8, stories:24 },
-    "2025-10": { seg:10864, alc:1052801, org:4955, pago:1047846, views:3790233, inv:0, inter:14616, vis:21049, posts:8, reels:6, stories:30 },
-    "2025-11": { seg:12140, alc:456159, org:7879, pago:448280, views:1276029, inv:0, inter:8228, vis:13143, posts:4, reels:2, stories:0 },
-    "2025-12": { seg:13403, alc:471798, org:6133, pago:465665, views:8426159, inv:0, inter:40494, vis:64982, posts:46, reels:20, stories:124 },
-    "2026-01": { seg:14058, alc:443887, org:9717, pago:434170, views:1110622, inv:0, inter:7196, vis:12290, posts:5, reels:3, stories:6 },
+    "2025-08": { seg:7452, alc:274390, org:7921, pago:266469, views:686112, inv:1475, inter:3079, vis:4085, posts:10, reels:3, stories:19 },
+    "2025-09": { seg:8475, alc:363091, org:15035, pago:348056, views:1115288, inv:4158, inter:5110, vis:7894, posts:12, reels:8, stories:24 },
+    "2025-10": { seg:10864, alc:1052801, org:4955, pago:1047846, views:3790233, inv:2541, inter:14616, vis:21049, posts:8, reels:6, stories:30 },
+    "2025-11": { seg:12140, alc:456159, org:7879, pago:448280, views:1276029, inv:1806, inter:8228, vis:13143, posts:4, reels:2, stories:0 },
+    "2025-12": { seg:13403, alc:471798, org:6133, pago:465665, views:8426159, inv:1844, inter:40494, vis:64982, posts:46, reels:20, stories:124 },
+    "2026-01": { seg:14058, alc:443887, org:9717, pago:434170, views:1110622, inv:77, inter:7196, vis:12290, posts:5, reels:3, stories:6 },
     "2026-02": { seg:14421, alc:212738, org:7505, pago:205233, views:573959, inv:0, inter:4683, vis:5372, posts:8, reels:4, stories:12 },
     "2026-03": { seg:15031, alc:192425, org:11269, pago:181156, views:1008980, inv:0, inter:22820, vis:6594, posts:6, reels:4, stories:69 },
   },
@@ -60,9 +60,13 @@ const db = {
     "2026-04": { seg:707, alc:377, org:377, pago:0, views:1581, inv:0, inter:21, vis:169, posts:0, reels:0, stories:0 },
   },
   "vila-morro": {
-    "2026-01": { seg:0, alc:0, org:0, pago:0, views:0, inv:19254, invMeta:12392, invGoogle:5413, invSeg:1448, inter:0, vis:12290, msgs:668 },
-    "2026-02": { seg:0, alc:0, org:0, pago:0, views:0, inv:10293, invMeta:6740, invGoogle:2738, invSeg:815, inter:0, vis:5372, msgs:365 },
-    "2026-03": { seg:0, alc:0, org:0, pago:0, views:0, inv:10807, invMeta:7265, invGoogle:2423, invSeg:1119, inter:0, vis:6594, msgs:321 },
+    "2025-10": { seg:0, alc:52558, org:52558, pago:0, views:257999, inv:0, inter:1951, vis:3080, posts:33, reels:0, stories:0 },
+    "2025-11": { seg:0, alc:8480, org:8480, pago:0, views:108532, inv:0, inter:363, vis:1650, posts:3, reels:2, stories:0 },
+    "2025-12": { seg:0, alc:15212, org:15212, pago:0, views:63586, inv:0, inter:454, vis:613, posts:9, reels:0, stories:0 },
+    "2026-01": { seg:1130, alc:16444, org:16444, pago:0, views:45500, inv:19254, invMeta:12392, invGoogle:5413, invSeg:1448, inter:844, vis:784, posts:11, reels:2, stories:0, msgs:668 },
+    "2026-02": { seg:1175, alc:2497, org:2497, pago:0, views:12325, inv:10293, invMeta:6740, invGoogle:2738, invSeg:815, inter:278, vis:413, posts:1, reels:1, stories:0, msgs:365 },
+    "2026-03": { seg:1220, alc:4203, org:4203, pago:0, views:12376, inv:10807, invMeta:7265, invGoogle:2423, invSeg:1119, inter:389, vis:327, posts:1, reels:1, stories:0, msgs:321 },
+    "2026-04": { seg:1271, alc:3605, org:3605, pago:0, views:14210, inv:0, inter:225, vis:194, posts:8, reels:0, stories:0 },
   },
 };
 
@@ -368,7 +372,6 @@ function SocioView({ onSwitch, C, mode, toggle }) {
       {/* ===== SIDEBAR (desktop) ===== */}
       {!mob && (
         <aside style={{ width: SW, position: "fixed", top: 0, left: 0, bottom: 0, background: C.sidebar || C.card, borderRight: `1px solid ${C.glassBd}`, display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 4px 12px", zIndex: 50, gap: 4 }}>
-          <div style={{ marginBottom: 14 }}><Logo lc={C.dourado} w={48} /></div>
           <SideIcon active={tab === "monte-dourado"} label="Monte Dourado" onClick={() => { setTab("monte-dourado"); setBrand(null); }}>
            <MdSymbol color={tab === "monte-dourado" ? C.dourado : C.mut} size={32} />
           </SideIcon>
