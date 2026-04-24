@@ -547,45 +547,60 @@ function SocioView({ onSwitch, C, mode, toggle }) {
 
               {/* SEÇÃO: ADS MONTE DOURADO */}
               {(() => {
+                const adsMonths = allPeriods.filter(pk => db["monte-dourado"]?.[pk]?.inv > 0);
+                if (!adsMonths.length) return null;
                 const d = !isAnual ? db["monte-dourado"]?.[period] : null;
                 const hasAds = d && d.inv > 0;
-                if (isAnual) {
-                  const y = period.split("-")[1];
-                  const ms = allPeriods.filter(pk => pk.startsWith(y) && db["monte-dourado"]?.[pk]?.inv > 0);
-                  if (!ms.length) return null;
-                  let tInv=0, tGoogle=0, tSeg=0;
-                  ms.forEach(pk => { const r=db["monte-dourado"][pk]; tInv+=r.inv||0; tGoogle+=r.invGoogle||0; tSeg+=r.invSeg||0; });
-                  return (
-                    <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(120) }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #4285F4" }}>
-                        <Globe size={18} color="#4285F4" strokeWidth={1.5} />
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Tráfego pago</div>
-                          <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Google Ads + Seguidores · {y}</div>
-                        </div>
-                      </div>
-                      <div style={{ padding: mob ? "12px 10px" : "14px 14px", display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 6 }}>
-                        <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Investimento total</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(tInv)}</div><div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>{ms.length} meses com ADS</div></div>
-                        <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Google Ads</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(tGoogle)}</div><div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>Palavras-chave</div></div>
-                        <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Seguidores</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(tSeg)}</div><div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>Campanhas de crescimento</div></div>
-                      </div>
-                    </div>
-                  );
-                }
-                if (!hasAds) return null;
+                // Dados para gráfico
+                const invHistory = adsMonths.map(pk => {
+                  const r = db["monte-dourado"][pk];
+                  return { m: periodLabels[pk], total: r.inv||0, google: r.invGoogle||0, seg: r.invSeg||0 };
+                });
+                // Totais acumulados
+                let tInv=0, tGoogle=0, tSeg=0;
+                const relevantMonths = isAnual ? adsMonths.filter(pk => pk.startsWith(period.split("-")[1])) : adsMonths;
+                relevantMonths.forEach(pk => { const r=db["monte-dourado"][pk]; tInv+=r.inv||0; tGoogle+=r.invGoogle||0; tSeg+=r.invSeg||0; });
+                const periodLabel = isAnual ? period.split("-")[1] : (hasAds ? getPeriodLabel(period) : "Acumulado");
                 return (
                   <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(120) }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #4285F4" }}>
                       <Globe size={18} color="#4285F4" strokeWidth={1.5} />
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Tráfego pago</div>
-                        <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Google Ads + Seguidores · {getPeriodLabel(period)}</div>
+                        <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Google Ads + Camp. Seguidores · {periodLabel}</div>
                       </div>
                     </div>
+                    {/* KPIs */}
                     <div style={{ padding: mob ? "12px 10px" : "14px 14px", display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 6 }}>
-                      <div style={{ ...card, padding: "14px 12px" }} onClick={() => setMetricModal({ label: "Investimento", field: "inv", brandId: "monte-dourado" })} className="kpi-hover"><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Investimento total</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(d.inv)}</div></div>
-                      {d.invGoogle > 0 && <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Google Ads</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(d.invGoogle)}</div></div>}
-                      {d.invSeg > 0 && <div style={{ ...card, padding: "14px 12px" }}><div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Seguidores</div><div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(d.invSeg)}</div></div>}
+                      <div style={{ ...card, padding: "14px 12px", cursor: "pointer" }} onClick={() => setMetricModal({ label: "Investimento", field: "inv", brandId: "monte-dourado" })}>
+                        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Investimento total</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(hasAds ? d.inv : tInv)}</div>
+                        <div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>{hasAds ? "" : `${relevantMonths.length} meses`}</div>
+                      </div>
+                      <div style={{ ...card, padding: "14px 12px", cursor: "pointer" }} onClick={() => setMetricModal({ label: "Google Ads", field: "invGoogle", brandId: "monte-dourado" })}>
+                        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Google Ads</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(hasAds ? (d.invGoogle||0) : tGoogle)}</div>
+                        <div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>Palavras-chave</div>
+                      </div>
+                      <div style={{ ...card, padding: "14px 12px", cursor: "pointer" }} onClick={() => setMetricModal({ label: "Camp. Seguidores", field: "invSeg", brandId: "monte-dourado" })}>
+                        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Camp. Seguidores</div>
+                        <div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(hasAds ? (d.invSeg||0) : tSeg)}</div>
+                        <div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>Crescimento de base</div>
+                      </div>
+                    </div>
+                    {/* Gráfico de barras */}
+                    <div style={{ padding: mob ? "4px 10px 14px" : "4px 14px 16px" }}>
+                      <ResponsiveContainer width="100%" height={mob ? 160 : 200}>
+                        <BarChart data={invHistory} barSize={mob ? 20 : 32}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                          <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 30} />
+                          <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={45} />
+                          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: `1px solid #4285F4`, borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#4285F4", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4", fontWeight: 500 }}>R$ {payload[0]?.payload?.total?.toLocaleString("pt-BR")}</div>{payload[0]?.payload?.google > 0 && <div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>Google: R$ {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div>}{payload[0]?.payload?.seg > 0 && <div style={{ fontSize: 9, color: "#C8BDA8" }}>Camp. Seg: R$ {payload[0]?.payload?.seg?.toLocaleString("pt-BR")}</div>}</div> : null} />
+                          <Bar dataKey="total" radius={[4,4,0,0]}>
+                            {invHistory.map((e, i) => <Cell key={i} fill={hasAds && e.m === periodLabels[period] ? "#4285F4" : "#4285F4" + "80"} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
                 );
