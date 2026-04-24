@@ -279,7 +279,7 @@ function MdSymbol({ color = "#89765A", size = 48 }) {
 /* ============================================================
    VISÃO DO SÓCIO — Redesign DashCortex
 ============================================================ */
-function SocioView({ onSwitch, C, mode, toggle }) {
+function SocioView({ onSwitch, C, mode, toggle, user }) {
   const mob = useM();
   useEffect(() => { const s = document.createElement("style"); s.textContent = FONT_CSS; document.head.appendChild(s); return () => s.remove(); }, []);
   const [tab, setTab] = useState("monte-dourado");
@@ -414,13 +414,17 @@ function SocioView({ onSwitch, C, mode, toggle }) {
           <SideIcon active={tab === "eventos"} label="Eventos" onClick={() => { setTab("eventos"); setBrand(null); }}>
             <CalendarDays size={16} color={tab === "eventos" ? C.dourado : C.mut} strokeWidth={1.5} />
           </SideIcon>
+          <SideIcon active={tab === "financeiro"} label="Financeiro" onClick={() => { setTab("financeiro"); setBrand(null); }}>
+            <DollarSign size={16} color={tab === "financeiro" ? C.dourado : C.mut} strokeWidth={1.5} />
+          </SideIcon>
           <div style={{ flex: 1 }} />
           <button onClick={toggle} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, borderRadius: 6, opacity: 0.5 }} title={mode === "dark" ? "Modo claro" : "Modo escuro"}>
             {mode === "dark" ? <Sun size={15} color={C.sec} strokeWidth={1.5} /> : <Moon size={15} color={C.sec} strokeWidth={1.5} />}
           </button>
-          <button onClick={onSwitch} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, borderRadius: 6, opacity: 0.5 }} title="Admin">
+          <button onClick={onSwitch} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, borderRadius: 6, opacity: 0.5 }} title="Sair">
             <Lock size={15} color={C.sec} strokeWidth={1.5} />
           </button>
+          {user && <div style={{ fontSize: 7, color: C.mut, fontFamily: "'Gotham',sans-serif", textAlign: "center", marginTop: 2 }}>{user.name?.split(" ")[0]}</div>}
         </aside>
       )}
 
@@ -434,14 +438,14 @@ function SocioView({ onSwitch, C, mode, toggle }) {
             {!mob && <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <MdSymbol color={C.dourado} size={36} />
               <span style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>
-                {tab === "monte-dourado" ? "Monte Dourado" : tab === "empreendimentos" ? "Empreendimentos" : "Eventos"}
+                {tab === "monte-dourado" ? "Monte Dourado" : tab === "empreendimentos" ? "Empreendimentos" : tab === "financeiro" ? "Financeiro" : "Eventos"}
               </span>
               <span style={{ fontSize: 9, color: C.mut, padding: "3px 8px", background: "rgba(255,255,255,0.04)", borderRadius: 4, fontFamily: "'Gotham',sans-serif" }}>{getPeriodLabel(period)}</span>
             </div>}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {mob && <button onClick={toggle} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 8px", cursor: "pointer", color: C.sec, display: "flex", alignItems: "center" }}>{mode === "dark" ? <Sun size={14} color={C.dourado} /> : <Moon size={14} color={C.dourado} />}</button>}
-            {mob && <button onClick={onSwitch} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 9, color: C.dourado, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Admin</button>}
+            {mob && <button onClick={onSwitch} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 9, color: C.dourado, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Sair</button>}
             <button onClick={() => setMenu(!menu)} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: C.sec, display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
               <Menu size={14} color={C.sec} strokeWidth={1.5} />
               {!mob && "Filtros"}
@@ -451,7 +455,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
 
         {/* MOBILE TABS */}
         {mob && <div style={{ display: "flex", borderBottom: `1px solid ${C.glassBd}`, background: C.bg }}>
-          {[["monte-dourado","Monte Dourado"],["empreendimentos","Empreend."],["eventos","Eventos"]].map(([id,lbl]) => (
+          {[["monte-dourado","Monte Dourado"],["empreendimentos","Empreend."],["eventos","Eventos"],["financeiro","Financeiro"]].map(([id,lbl]) => (
             <button key={id} onClick={() => { setTab(id); setBrand(null); }} style={{ flex: 1, padding: "10px 0", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", background: "none", border: "none", borderBottom: `2px solid ${tab === id ? C.dourado : "transparent"}`, color: tab === id ? C.dourado : C.mut, cursor: "pointer", transition: "all 0.2s" }}>{lbl}</button>
           ))}
         </div>}
@@ -496,8 +500,291 @@ function SocioView({ onSwitch, C, mode, toggle }) {
             </div>
           </div>}
 
+          {/* === ABA FINANCEIRO === */}
+          {tab === "financeiro" && (() => {
+            // Consolidar dados financeiros de todas as marcas
+            const finBrands = ["monte-dourado", "vila-morro"];
+            const finMonths = [...new Set(finBrands.flatMap(bid => allPeriods.filter(pk => db[bid]?.[pk]?.inv > 0)))].sort();
+            
+            // Totais gerais
+            let totalInv=0, totalMeta=0, totalGoogle=0, totalSeg=0, totalMsgs=0;
+            finBrands.forEach(bid => allPeriods.forEach(pk => {
+              const d = db[bid]?.[pk]; if (!d) return;
+              totalInv+=d.inv||0; totalMeta+=d.invMeta||0; totalGoogle+=d.invGoogle||0; totalSeg+=d.invSeg||0; totalMsgs+=d.msgs||0;
+            }));
+
+            // Totais por marca
+            const brandTotals = finBrands.map(bid => {
+              let inv=0, meta=0, google=0, seg=0, msgs=0;
+              allPeriods.forEach(pk => { const d=db[bid]?.[pk]; if(!d) return; inv+=d.inv||0; meta+=d.invMeta||0; google+=d.invGoogle||0; seg+=d.invSeg||0; msgs+=d.msgs||0; });
+              return { id: bid, name: brands.find(b=>b.id===bid)?.name||bid, color: brands.find(b=>b.id===bid)?.color||"#aaa", inv, meta, google, seg, msgs };
+            });
+
+            // Dados para gráfico mensal comparativo
+            const monthlyChart = finMonths.map(pk => {
+              const md = db["monte-dourado"]?.[pk]; const vm = db["vila-morro"]?.[pk];
+              return { m: periodLabels[pk], "Monte Dourado": md?.inv||0, "Vila do Morro": vm?.inv||0 };
+            });
+
+            // Dados para gráfico por canal
+            const channelChart = [
+              { canal: "Meta Ads", valor: totalMeta },
+              { canal: "Google Ads", valor: totalGoogle },
+              { canal: "Camp. Seg", valor: totalSeg },
+            ].filter(c => c.valor > 0);
+
+            // Custo por mensagem
+            const custoMsg = totalMsgs > 0 ? (totalInv / totalMsgs) : 0;
+
+            return <div style={{ ...fi(0) }}>
+              {/* KPIs financeiros */}
+              <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8, marginBottom: 12, marginTop: 10 }}>
+                <div style={{ ...card, padding: "16px 14px" }}>
+                  <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 8 }}>Investimento total</div>
+                  <div style={{ fontSize: mob ? 20 : 26, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>R$ {fmt(totalInv)}</div>
+                  <div style={{ fontSize: 9, color: C.sec, marginTop: 4, fontFamily: "'Gotham',sans-serif" }}>{finMonths.length} meses com ADS</div>
+                </div>
+                <div style={{ ...card, padding: "16px 14px" }}>
+                  <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 8 }}>Total de mensagens</div>
+                  <div style={{ fontSize: mob ? 20 : 26, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>{totalMsgs.toLocaleString("pt-BR")}</div>
+                  <div style={{ fontSize: 9, color: C.sec, marginTop: 4, fontFamily: "'Gotham',sans-serif" }}>Via Meta Ads</div>
+                </div>
+                <div style={{ ...card, padding: "16px 14px" }}>
+                  <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 8 }}>Custo por mensagem</div>
+                  <div style={{ fontSize: mob ? 20 : 26, fontWeight: 500, fontFamily: "'Marisa',serif", color: custoMsg > 30 ? "#ef4444" : "#22c55e" }}>R$ {custoMsg.toFixed(2).replace(".",",")}</div>
+                  <div style={{ fontSize: 9, color: C.sec, marginTop: 4, fontFamily: "'Gotham',sans-serif" }}>Média geral</div>
+                </div>
+                <div style={{ ...card, padding: "16px 14px" }}>
+                  <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 8 }}>Marcas ativas</div>
+                  <div style={{ fontSize: mob ? 20 : 26, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>{brandTotals.filter(b=>b.inv>0).length}</div>
+                  <div style={{ fontSize: 9, color: C.sec, marginTop: 4, fontFamily: "'Gotham',sans-serif" }}>Monte Dourado + Vila do Morro</div>
+                </div>
+              </div>
+
+              {/* Investimento por marca */}
+              <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 12px" : "18px 16px" }}>
+                <div style={{ fontSize: 10, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 14 }}>Investimento por marca</div>
+                {brandTotals.filter(b=>b.inv>0).map(b => (
+                  <div key={b.id} style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: b.color }} />
+                        <span style={{ fontSize: 12, fontFamily: "'Marisa',serif", textTransform: "uppercase", color: C.text }}>{b.name}</span>
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>R$ {fmt(b.inv)}</span>
+                    </div>
+                    <div style={{ height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.round((b.inv / totalInv) * 100)}%`, background: b.color, borderRadius: 3, transition: "width 0.6s ease" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+                      {b.meta > 0 && <span style={{ fontSize: 9, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>Meta: R$ {fmt(b.meta)}</span>}
+                      {b.google > 0 && <span style={{ fontSize: 9, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>Google: R$ {fmt(b.google)}</span>}
+                      {b.seg > 0 && <span style={{ fontSize: 9, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>Seg: R$ {fmt(b.seg)}</span>}
+                      {b.msgs > 0 && <span style={{ fontSize: 9, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>{b.msgs} msgs</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Gráfico: investimento mensal comparativo */}
+              <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 10px" : "18px 16px" }}>
+                <div style={{ fontSize: 10, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 14 }}>Investimento mensal por marca</div>
+                <ResponsiveContainer width="100%" height={mob ? 200 : 260}>
+                  <BarChart data={monthlyChart} barSize={mob ? 14 : 22}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 30} />
+                    <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={50} />
+                    <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload, label }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: C.dourado, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>{payload.map((p,i) => <div key={i} style={{ fontSize: 11, color: p.color, marginBottom: 2 }}>{p.name}: R$ {p.value?.toLocaleString("pt-BR")}</div>)}</div> : null} />
+                    <Bar dataKey="Monte Dourado" fill="#C4A76C" radius={[3,3,0,0]} />
+                    <Bar dataKey="Vila do Morro" fill="#6B8F7B" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}><div style={{ width: 10, height: 10, borderRadius: 2, background: "#C4A76C" }} /><span style={{ fontSize: 9, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>Monte Dourado</span></div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}><div style={{ width: 10, height: 10, borderRadius: 2, background: "#6B8F7B" }} /><span style={{ fontSize: 9, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>Vila do Morro</span></div>
+                </div>
+              </div>
+
+              {/* Distribuição por canal */}
+              <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 12px" : "18px 16px" }}>
+                <div style={{ fontSize: 10, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 14 }}>Distribuição por canal</div>
+                {/* Barra proporcional */}
+                <div style={{ display: "flex", height: 14, borderRadius: 7, overflow: "hidden", marginBottom: 16 }}>
+                  {channelChart.map((ch, i) => {
+                    const colors = ["#E1306C", "#4285F4", "#C4A76C"];
+                    return <div key={i} style={{ width: `${Math.round((ch.valor / totalInv) * 100)}%`, background: colors[i], transition: "width 0.6s ease" }} />;
+                  })}
+                </div>
+                {/* Cards */}
+                <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : `repeat(${channelChart.length},1fr)`, gap: 8 }}>
+                  {channelChart.map((ch, i) => {
+                    const colors = ["#E1306C", "#4285F4", "#C4A76C"];
+                    return (
+                      <div key={ch.canal} style={{ ...card, padding: "14px 12px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors[i] }} />
+                          <span style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>{ch.canal}</span>
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>R$ {fmt(ch.valor)}</div>
+                        <div style={{ fontSize: 9, color: colors[i], marginTop: 4, fontFamily: "'Gotham',sans-serif" }}>{Math.round((ch.valor / totalInv) * 100)}% do total</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custo por mensagem mensal - Vila do Morro */}
+              {(() => {
+                const msgsMonths = allPeriods.filter(pk => db["vila-morro"]?.[pk]?.msgs > 0);
+                if (!msgsMonths.length) return null;
+                const msgsChart = msgsMonths.map(pk => {
+                  const d = db["vila-morro"][pk];
+                  return { m: periodLabels[pk], msgs: d.msgs, custo: d.inv > 0 && d.msgs > 0 ? +(d.inv/d.msgs).toFixed(2) : 0, inv: d.inv };
+                });
+                return (
+                  <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 10px" : "18px 16px" }}>
+                    <div style={{ fontSize: 10, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 4 }}>Custo por mensagem · Vila do Morro</div>
+                    <div style={{ fontSize: 9, color: C.sec, fontFamily: "'Gotham',sans-serif", marginBottom: 14 }}>Investimento ÷ mensagens recebidas</div>
+                    <ResponsiveContainer width="100%" height={mob ? 180 : 220}>
+                      <AreaChart data={msgsChart}>
+                        <defs><linearGradient id="cpm_g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#6B8F7B" stopOpacity={0.3}/><stop offset="100%" stopColor="#6B8F7B" stopOpacity={0}/></linearGradient></defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                        <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} />
+                        <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} width={45} tickFormatter={v => `R$${v}`} />
+                        <Tooltip content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4" }}>R$ {payload[0]?.value?.toFixed(2).replace(".",",")} por msg</div><div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>{payload[0]?.payload?.msgs} msgs · R$ {fmt(payload[0]?.payload?.inv)}</div></div> : null} />
+                        <Area type="monotone" dataKey="custo" stroke="#6B8F7B" strokeWidth={2} fill="url(#cpm_g)" dot={{ r:3, fill:"#6B8F7B" }} activeDot={{ r:5 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              })()}
+
+              {/* ======= ROI COMERCIAL POR EMPREENDIMENTO ======= */}
+              <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 12px" : "18px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                  <TrendingUp size={16} color={C.dourado} strokeWidth={1.5} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>ROI comercial</div>
+                    <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Retorno por empreendimento</div>
+                  </div>
+                </div>
+
+                {/* Vila do Morro — card + gráfico investimento vs mensagens */}
+                {(() => {
+                  let inv=0, msgs=0, meta=0, google=0, seg=0;
+                  allPeriods.forEach(pk => { const d=db["vila-morro"]?.[pk]; if(!d) return; inv+=d.inv||0; msgs+=d.msgs||0; meta+=d.invMeta||0; google+=d.invGoogle||0; seg+=d.invSeg||0; });
+                  const custoMsg = msgs > 0 ? inv / msgs : 0;
+                  const mesesAds = allPeriods.filter(pk => db["vila-morro"]?.[pk]?.inv > 0).length;
+                  const vmChart = allPeriods.filter(pk => db["vila-morro"]?.[pk]?.inv > 0).map(pk => {
+                    const d = db["vila-morro"][pk];
+                    return { m: periodLabels[pk], inv: d.inv||0, msgs: d.msgs||0, custo: d.msgs > 0 ? +(d.inv/d.msgs).toFixed(1) : 0 };
+                  });
+                  return (
+                    <div style={{ ...card, padding: mob ? "14px 12px" : "16px 14px", marginBottom: 8, borderLeft: "3px solid #6B8F7B" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontFamily: "'Marisa',serif", textTransform: "uppercase", color: C.text, marginBottom: 2 }}>Vila do Morro</div>
+                          <span style={{ fontSize: 8, color: "#6B8F7B", background: "#6B8F7B18", padding: "2px 8px", borderRadius: 10, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Sustentação</span>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif", textTransform: "uppercase", letterSpacing: "0.08em" }}>Investido</div>
+                          <div style={{ fontSize: 18, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>R$ {fmt(inv)}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: mob ? 4 : 6, marginBottom: 14 }}>
+                        <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: C.mut, textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 4 }}>Mensagens</div><div style={{ fontSize: 15, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>{msgs.toLocaleString("pt-BR")}</div></div>
+                        <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: C.mut, textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 4 }}>Custo/msg</div><div style={{ fontSize: 15, fontWeight: 500, fontFamily: "'Marisa',serif", color: custoMsg > 35 ? "#ef4444" : "#22c55e" }}>R$ {custoMsg.toFixed(0)}</div></div>
+                        <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: C.mut, textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 4 }}>Meses ADS</div><div style={{ fontSize: 15, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>{mesesAds}</div></div>
+                        <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: C.mut, textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 4 }}>Inv/mês</div><div style={{ fontSize: 15, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>R$ {fmt(mesesAds > 0 ? Math.round(inv/mesesAds) : 0)}</div></div>
+                      </div>
+                      {/* Gráfico: investimento vs mensagens */}
+                      <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 8 }}>Investimento vs Mensagens por mês</div>
+                      <ResponsiveContainer width="100%" height={mob ? 160 : 200}>
+                        <BarChart data={vmChart} barSize={mob ? 12 : 20}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                          <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={0} />
+                          <YAxis yAxisId="inv" tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={v => `R$${fmt(v)}`} width={55} />
+                          <YAxis yAxisId="msgs" orientation="right" tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} width={35} />
+                          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 11, color: "#C4A76C" }}>Investimento: R$ {payload[0]?.payload?.inv?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 11, color: "#69C9D0" }}>Mensagens: {payload[0]?.payload?.msgs}</div><div style={{ fontSize: 11, color: C.sec }}>Custo/msg: R$ {payload[0]?.payload?.custo?.toFixed(2).replace(".",",")}</div></div> : null} />
+                          <Bar yAxisId="inv" dataKey="inv" fill="#C4A76C" radius={[3,3,0,0]} name="Investimento" />
+                          <Bar yAxisId="msgs" dataKey="msgs" fill="#69C9D0" radius={[3,3,0,0]} name="Mensagens" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#C4A76C" }} /><span style={{ fontSize: 8, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>Investimento (R$)</span></div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: "#69C9D0" }} /><span style={{ fontSize: 8, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>Mensagens</span></div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Vila do Chapéu */}
+                <div style={{ ...card, padding: mob ? "14px 12px" : "16px 14px", marginBottom: 8, borderLeft: "3px solid #7A9BBF" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontFamily: "'Marisa',serif", textTransform: "uppercase", color: C.text, marginBottom: 2 }}>Vila do Chapéu</div>
+                      <span style={{ fontSize: 8, color: "#7A9BBF", background: "#7A9BBF18", padding: "2px 8px", borderRadius: 10, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Consolidação do bairro</span>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif", textTransform: "uppercase", letterSpacing: "0.08em" }}>Investido</div>
+                      <div style={{ fontSize: 18, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>R$ 0</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, color: C.sec, fontFamily: "'Gotham',sans-serif", marginTop: 8 }}>100% orgânico · empreendimento vendido · sem investimento em ADS</div>
+                </div>
+
+                {/* Vila da Ilha */}
+                <div style={{ ...card, padding: mob ? "14px 12px" : "16px 14px", borderLeft: "3px solid #D4A574", opacity: 0.6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontFamily: "'Marisa',serif", textTransform: "uppercase", color: C.text, marginBottom: 2 }}>Vila da Ilha</div>
+                      <span style={{ fontSize: 8, color: "#D4A574", background: "#D4A57418", padding: "2px 8px", borderRadius: 10, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.06em", textTransform: "uppercase" }}>Marca em criação</span>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Sem dados</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ======= ROI DE MARCA — EVENTOS ======= */}
+              <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 12px" : "18px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <CalendarDays size={16} color={C.dourado} strokeWidth={1.5} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>ROI de marca</div>
+                    <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Experiência e presença social · não comercial</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 10, color: C.sec, fontFamily: "'Gotham',sans-serif", marginBottom: 14, lineHeight: 1.6 }}>Eventos de experiência não geram vendas diretas. O retorno é medido em alcance, engajamento e conteúdo gerado. Os gráficos serão gerados automaticamente ao inserir os dados dos eventos.</div>
+
+                {/* Cards de eventos - placeholders */}
+                <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr 1fr", gap: 8 }}>
+                  {[
+                    { nome: "QS Taíba Pro", cor: "#C4A76C" },
+                    { nome: "Surf na Laje", cor: "#69C9D0" },
+                    { nome: "GKA Kite", cor: "#A78BFA" },
+                  ].map(ev => (
+                    <div key={ev.nome} style={{ ...card, padding: "14px 12px", borderLeft: `3px solid ${ev.cor}`, opacity: 0.6 }}>
+                      <div style={{ fontSize: 12, fontFamily: "'Marisa',serif", textTransform: "uppercase", color: C.text, marginBottom: 6 }}>{ev.nome}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        {["Custo", "Alcance", "Interações", "Conteúdo"].map(m => (
+                          <div key={m}>
+                            <div style={{ fontSize: 7, color: C.mut, textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 2 }}>{m}</div>
+                            <div style={{ fontSize: 13, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.mut }}>—</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 8, color: ev.cor, fontFamily: "'Gotham',sans-serif", marginTop: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Aguardando relatório</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>;
+          })()}
+
           {/* === ABAS MONTE DOURADO / EMPREENDIMENTOS === */}
-          {tab !== "eventos" && <>
+          {tab !== "eventos" && tab !== "financeiro" && <>
 
             {/* PERIOD FILTERS */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, position: "relative", zIndex: (pOpen || yOpen) ? 50 : 1, ...fi(0) }}>
@@ -841,7 +1128,7 @@ function SocioView({ onSwitch, C, mode, toggle }) {
 /* ============================================================
    VISÃO DA VITÓRIA (ADMIN)
 ============================================================ */
-function AdminView({ onSwitch, C, mode, toggle }) {
+function AdminView({ onSwitch, C, mode, toggle, user }) {
   const mob = useM();
   useEffect(() => { if (!document.querySelector("[data-md-fonts]")) { const s = document.createElement("style"); s.textContent = FONT_CSS; s.dataset.mdFonts = "1"; document.head.appendChild(s); } }, []);
   const [step, setStep] = useState("login"); // login | select | upload | extracting | review | done
@@ -1060,12 +1347,126 @@ function AdminView({ onSwitch, C, mode, toggle }) {
 /* ============================================================
    APP PRINCIPAL (alterna entre visões)
 ============================================================ */
+/* ============================================================
+   TELA DE LOGIN — PIN 4 DÍGITOS
+============================================================ */
+function LoginView({ onLogin }) {
+  const C = themes.dark;
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const mob = typeof window !== "undefined" && window.innerWidth < 700;
+
+  const handleDigit = (d) => {
+    if (pin.length >= 4) return;
+    const newPin = pin + d;
+    setPin(newPin);
+    setError("");
+    if (newPin.length === 4) {
+      submitPin(newPin);
+    }
+  };
+  const handleDelete = () => { setPin(pin.slice(0, -1)); setError(""); };
+
+  const submitPin = async (p) => {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: p }) });
+      const j = await r.json();
+      if (j.success) {
+        if (remember) localStorage.setItem("md_session", JSON.stringify({ name: j.name, role: j.role, token: j.token }));
+        onLogin({ name: j.name, role: j.role });
+      } else {
+        setError(j.error || "PIN incorreto");
+        setPin("");
+      }
+    } catch (e) {
+      setError("Erro de conexão");
+      setPin("");
+    }
+    setLoading(false);
+  };
+
+  const dots = [0,1,2,3].map(i => <div key={i} style={{ width: 14, height: 14, borderRadius: "50%", background: i < pin.length ? C.dourado : "transparent", border: `2px solid ${i < pin.length ? C.dourado : C.glassBd}`, transition: "all 0.15s ease" }} />);
+  const keys = [["1","2","3"],["4","5","6"],["7","8","9"],["","\u0030","⌫"]];
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
+        <MdSymbol color={C.dourado} size={mob ? 48 : 64} />
+        <div style={{ fontSize: mob ? 14 : 18, fontFamily: "'Marisa',serif", textTransform: "uppercase", letterSpacing: "0.12em", color: C.text, marginTop: 12 }}>Monte Dourado</div>
+        <div style={{ fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif", marginTop: 4, letterSpacing: "0.06em" }}>Painel de desempenho digital</div>
+      </div>
+
+      <div style={{ fontSize: 11, color: C.sec, fontFamily: "'Gotham',sans-serif", marginBottom: 20, letterSpacing: "0.04em" }}>Digite seu PIN de acesso</div>
+
+      {/* Dots */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>{dots}</div>
+
+      {/* Erro */}
+      {error && <div style={{ fontSize: 11, color: "#ef4444", fontFamily: "'Gotham',sans-serif", marginBottom: 16, animation: "shake 0.3s" }}>{error}</div>}
+
+      {/* Teclado numérico */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 64px)", gap: 10 }}>
+        {keys.flat().map((k, i) => k === "" ? <div key={i} /> : (
+          <button key={i} onClick={() => k === "⌫" ? handleDelete() : handleDigit(k)}
+            disabled={loading}
+            style={{
+              width: 64, height: 64, borderRadius: "50%", fontSize: k === "⌫" ? 18 : 22,
+              fontFamily: "'Marisa',serif", color: C.text,
+              background: k === "⌫" ? "transparent" : "rgba(255,255,255,0.04)",
+              border: k === "⌫" ? "none" : `1px solid ${C.glassBd}`,
+              cursor: "pointer", transition: "all 0.15s",
+              display: "flex", alignItems: "center", justifyContent: "center"
+            }}
+            onMouseEnter={e => { if(k !== "⌫") e.currentTarget.style.background = C.dourado + "20"; e.currentTarget.style.borderColor = C.dourado + "60"; }}
+            onMouseLeave={e => { if(k !== "⌫") e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = C.glassBd; }}
+          >{k}</button>
+        ))}
+      </div>
+
+      {/* Lembrar */}
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 24, cursor: "pointer" }}>
+        <div onClick={() => setRemember(!remember)} style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${remember ? C.dourado : C.glassBd}`, background: remember ? C.dourado + "30" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>
+          {remember && <span style={{ fontSize: 10, color: C.dourado }}>✓</span>}
+        </div>
+        <span style={{ fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Lembrar neste dispositivo</span>
+      </label>
+
+      {loading && <div style={{ fontSize: 10, color: C.dourado, fontFamily: "'Gotham',sans-serif", marginTop: 16, letterSpacing: "0.06em", textTransform: "uppercase" }}>Verificando...</div>}
+    </div>
+  );
+}
+
+/* ============================================================
+   APP PRINCIPAL (login → visões)
+============================================================ */
 export default function App() {
-  const [view, setView] = useState("socio");
+  const [user, setUser] = useState(null);
   const [mode, setMode] = useState("dark");
   const C = themes[mode];
   const toggle = () => setMode(mode === "dark" ? "light" : "dark");
-  return view === "socio"
-    ? <SocioView onSwitch={() => setView("admin")} C={C} mode={mode} toggle={toggle} />
-    : <AdminView onSwitch={() => setView("socio")} C={C} mode={mode} toggle={toggle} />;
+
+  // Checar sessão salva
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("md_session");
+      if (saved) {
+        const s = JSON.parse(saved);
+        if (s.name && s.role) setUser(s);
+      }
+    } catch(e) {}
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("md_session");
+    setUser(null);
+  };
+
+  if (!user) return <LoginView onLogin={setUser} />;
+
+  return user.role === "admin"
+    ? <AdminView onSwitch={handleLogout} C={C} mode={mode} toggle={toggle} user={user} />
+    : <SocioView onSwitch={handleLogout} C={C} mode={mode} toggle={toggle} user={user} />;
 }
