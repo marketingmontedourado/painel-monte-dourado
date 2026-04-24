@@ -306,14 +306,19 @@ function SocioView({ onSwitch, C, mode, toggle }) {
   const [aiConclusion, setAiConclusion] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiQuestion, setAiQuestion] = useState("");
+  useEffect(() => { setAiConclusion(""); setAiQuestion(""); }, [period, tab, brand]);
   const metricFieldMap = { "Seguidores":"seg", "Alcance":"alc", "Visualizações":"views", "Interações":"inter", "Investimento":"inv", "Visitas":"vis", "Meta Ads":"invMeta", "Google Ads":"invGoogle", "Mensagens":"msgs" };
   const getMetricField = (label) => { for (const [k,v] of Object.entries(metricFieldMap)) { if (label.toLowerCase().includes(k.toLowerCase())) return v; } return null; };
   const fetchAiConclusion = async (q) => {
     setAiLoading(true); setAiConclusion("");
     const bid = tab === "monte-dourado" ? "monte-dourado" : (brand || "geral");
-    const data = bid === "geral" ? Object.fromEntries(brands.map(b => [b.name, db[b.id]?.[period] || {}])) : db[bid]?.[period] || {};
+    const bn = brands.find(b=>b.id===bid)?.name || bid;
+    // Envia todos os dados da marca para que o Claude consiga comparar qualquer período
+    const allData = bid === "geral"
+      ? Object.fromEntries(brands.map(b => [b.name, db[b.id] || {}]))
+      : db[bid] || {};
     try {
-      const r = await fetch("/api/conclusion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data, period: getPeriodLabel(period), brand: brands.find(b=>b.id===bid)?.name || bid, question: q || "" }) });
+      const r = await fetch("/api/conclusion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: allData, period: getPeriodLabel(period), brand: bn, question: q || "" }) });
       const j = await r.json();
       setAiConclusion(j.conclusion || j.error || "Erro ao gerar conclusão.");
     } catch(e) { setAiConclusion("Erro de conexão. Verifique se a API está configurada."); }
