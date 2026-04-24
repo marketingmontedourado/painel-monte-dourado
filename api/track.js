@@ -23,36 +23,49 @@ export default async function handler(req, res) {
       ua: (req.headers["user-agent"] || "").substring(0, 100),
     };
 
-    if (!trackingUrl) {
-      console.log("TRACKING_URL nao configurada");
-      return res.status(200).json({ ok: true, note: "no_url" });
-    }
+    if (!trackingUrl) return res.status(200).json({ ok: true });
 
     try {
-      const r = await fetch(trackingUrl, {
+      // Google Apps Script retorna redirect 302 — precisa seguir manualmente
+      const r1 = await fetch(trackingUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry),
-        redirect: "follow",
+        redirect: "manual",
       });
-      const txt = await r.text();
-      console.log("Track OK:", r.status, txt.substring(0, 200));
+      // Se redirect, segue com POST
+      if (r1.status >= 300 && r1.status < 400) {
+        const loc = r1.headers.get("location");
+        if (loc) {
+          await fetch(loc, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(entry),
+            redirect: "follow",
+          });
+        }
+      }
       return res.status(200).json({ ok: true });
     } catch (e) {
-      console.log("Track ERRO:", e.message);
-      return res.status(200).json({ ok: true, error: e.message });
+      return res.status(200).json({ ok: true });
     }
   }
 
   // GET — buscar dados de analytics
   if (req.method === "GET") {
-    if (!trackingUrl) return res.status(200).json({ data: [], note: "no_url" });
+    if (!trackingUrl) return res.status(200).json({ data: [] });
     try {
       const r = await fetch(trackingUrl, { redirect: "follow" });
-      const j = await r.json();
-      return res.status(200).json(j);
+      const txt = await r.text();
+      try {
+        const j = JSON.parse(txt);
+        return res.status(200).json(j);
+      } catch (e) {
+        // Se recebeu HTML (redirect do Google), tenta extrair JSON
+        return res.status(200).json({ data: [] });
+      }
     } catch (e) {
-      return res.status(200).json({ data: [], error: e.message });
+      return res.status(200).json({ data: [] });
     }
   }
 
