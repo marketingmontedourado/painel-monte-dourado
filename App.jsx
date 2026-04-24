@@ -279,7 +279,7 @@ function MdSymbol({ color = "#89765A", size = 48 }) {
 /* ============================================================
    VISÃO DO SÓCIO — Redesign DashCortex
 ============================================================ */
-function SocioView({ onSwitch, C, mode, toggle, user }) {
+function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   const mob = useM();
   useEffect(() => { const s = document.createElement("style"); s.textContent = FONT_CSS; document.head.appendChild(s); return () => s.remove(); }, []);
   const [tab, setTab] = useState("monte-dourado");
@@ -289,6 +289,14 @@ function SocioView({ onSwitch, C, mode, toggle, user }) {
   const [ready, setReady] = useState(false);
   useEffect(() => { setTimeout(() => setReady(true), 80); }, []);
   const fi = d => ({ opacity: ready ? 1 : 0, transform: ready ? "translateY(0)" : "translateY(8px)", transition: `all 0.5s cubic-bezier(.4,0,.2,1) ${d}ms` });
+
+  // Tracking — registra navegação do usuário
+  const track = (event, extra) => {
+    if (!user) return;
+    fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: user.name, role: user.role, event, tab, brand, period, ...extra }) }).catch(()=>{});
+  };
+  useEffect(() => { track("tab_change", { tab }); }, [tab]);
+  useEffect(() => { if (brand) track("brand_change", { brand }); }, [brand]);
 
   const empBrands = brands.filter(b => b.id !== "monte-dourado");
   const activeBrand = tab === "monte-dourado" ? "monte-dourado" : brand;
@@ -424,6 +432,7 @@ function SocioView({ onSwitch, C, mode, toggle, user }) {
           <button onClick={onSwitch} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, borderRadius: 6, opacity: 0.5 }} title="Sair">
             <Lock size={15} color={C.sec} strokeWidth={1.5} />
           </button>
+          {onAdmin && <button onClick={onAdmin} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4, opacity: 0.6, fontSize: 7, color: C.dourado, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.06em" }} title="Admin">ADMIN</button>}
           {user && <div style={{ fontSize: 7, color: C.mut, fontFamily: "'Gotham',sans-serif", textAlign: "center", marginTop: 2 }}>{user.name?.split(" ")[0]}</div>}
         </aside>
       )}
@@ -1131,7 +1140,7 @@ function SocioView({ onSwitch, C, mode, toggle, user }) {
 function AdminView({ onSwitch, C, mode, toggle, user }) {
   const mob = useM();
   useEffect(() => { if (!document.querySelector("[data-md-fonts]")) { const s = document.createElement("style"); s.textContent = FONT_CSS; s.dataset.mdFonts = "1"; document.head.appendChild(s); } }, []);
-  const [step, setStep] = useState("login"); // login | select | upload | extracting | review | done
+  const [step, setStep] = useState("select"); // select | upload | extracting | review | done
   const [brandId, setBrandId] = useState("monte-dourado");
   const [periodKey, setPeriodKey] = useState("2026-03");
   const [pdfName, setPdfName] = useState("");
@@ -1186,24 +1195,11 @@ function AdminView({ onSwitch, C, mode, toggle, user }) {
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button onClick={toggle} style={{ ...gl(C), padding: "8px 12px", cursor: "pointer", fontSize: 11, color: C.sec, display: "flex", alignItems: "center", gap: 5 }}>{mode === "dark" ? <Sun size={13} color={C.dourado} strokeWidth={1.5} /> : <Moon size={13} color={C.dourado} strokeWidth={1.5} />}{mob ? "" : (mode === "dark" ? "Claro" : "Escuro")}</button>
-        <button onClick={onSwitch} style={{ ...gl(C), padding: "8px 14px", cursor: "pointer", fontSize: 11, color: C.sec, letterSpacing: "0.08em", textTransform: "uppercase" }}>Ver painel</button>
+        <button onClick={onSwitch} style={{ ...gl(C), padding: "8px 14px", cursor: "pointer", fontSize: 11, color: C.sec, letterSpacing: "0.08em", textTransform: "uppercase" }}>Voltar</button>
       </div>
     </header>
 
     <main style={{ maxWidth: 720, margin: "0 auto", padding: mob ? "24px 14px" : "32px 20px" }}>
-
-      {/* LOGIN */}
-      {step === "login" && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-          <div style={{ ...gls(C), padding: 32, width: 360, textAlign: "center" }}>
-            <div style={{ fontSize: 10, color: C.dourado, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Painel administrativo</div>
-            <div style={{ marginBottom: 24, display: "flex", justifyContent: "center" }}><Logo lc={C.text} w={200} /></div>
-            <input type="password" placeholder="Senha" defaultValue="demo" style={{ ...sty.input, marginBottom: 16, textAlign: "center" }} />
-            <button onClick={() => setStep("select")} style={{ ...sty.btn, width: "100%" }}>Entrar</button>
-            <div style={{ fontSize: 11, color: C.mut, marginTop: 12 }}>Use qualquer senha (protótipo)</div>
-          </div>
-        </div>
-      )}
 
       {/* SELECT */}
       {step === "select" && (
@@ -1327,7 +1323,7 @@ function AdminView({ onSwitch, C, mode, toggle, user }) {
           <div style={{ fontSize: 22, fontWeight: 400, marginBottom: 8, fontFamily: "'Marisa',serif" }}>Publicado</div>
           <p style={{ fontSize: 14, color: C.sec, marginBottom: 24 }}>O painel dos sócios já está atualizado com os novos dados.</p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            <button onClick={onSwitch} style={sty.btn}>Ver painel do sócio</button>
+            <button onClick={onSwitch} style={sty.btn}>Voltar ao painel</button>
             <button onClick={() => { setStep("select"); setPdfName(""); setDocxName(""); }} style={sty.btnOut}>Novo relatório</button>
           </div>
         </div>
@@ -1356,6 +1352,7 @@ function LoginView({ onLogin }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [welcome, setWelcome] = useState(null);
   const mob = typeof window !== "undefined" && window.innerWidth < 700;
 
   const handleDigit = (d) => {
@@ -1363,9 +1360,7 @@ function LoginView({ onLogin }) {
     const newPin = pin + d;
     setPin(newPin);
     setError("");
-    if (newPin.length === 4) {
-      submitPin(newPin);
-    }
+    if (newPin.length === 4) submitPin(newPin);
   };
   const handleDelete = () => { setPin(pin.slice(0, -1)); setError(""); };
 
@@ -1376,7 +1371,10 @@ function LoginView({ onLogin }) {
       const j = await r.json();
       if (j.success) {
         if (remember) localStorage.setItem("md_session", JSON.stringify({ name: j.name, role: j.role, token: j.token }));
-        onLogin({ name: j.name, role: j.role });
+        setWelcome(j.name);
+        // Registra acesso
+        fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: j.name, role: j.role, event: "login" }) }).catch(()=>{});
+        setTimeout(() => onLogin({ name: j.name, role: j.role }), 1800);
       } else {
         setError(j.error || "PIN incorreto");
         setPin("");
@@ -1388,8 +1386,19 @@ function LoginView({ onLogin }) {
     setLoading(false);
   };
 
+  // Tela de boas-vindas
+  if (welcome) return (
+    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.4s ease" }}>
+      <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } @keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }`}</style>
+      <MdSymbol color={C.dourado} size={mob ? 56 : 72} />
+      <div style={{ fontSize: mob ? 20 : 28, fontFamily: "'Marisa',serif", textTransform: "uppercase", letterSpacing: "0.08em", color: C.text, marginTop: 20 }}>Bem-vindo,</div>
+      <div style={{ fontSize: mob ? 24 : 34, fontFamily: "'Marisa',serif", textTransform: "uppercase", letterSpacing: "0.06em", color: C.dourado, marginTop: 4 }}>{welcome}</div>
+      <div style={{ width: 40, height: 2, background: C.dourado, borderRadius: 1, marginTop: 16, animation: "pulse 1.2s ease infinite" }} />
+    </div>
+  );
+
   const dots = [0,1,2,3].map(i => <div key={i} style={{ width: 14, height: 14, borderRadius: "50%", background: i < pin.length ? C.dourado : "transparent", border: `2px solid ${i < pin.length ? C.dourado : C.glassBd}`, transition: "all 0.15s ease" }} />);
-  const keys = [["1","2","3"],["4","5","6"],["7","8","9"],["","\u0030","⌫"]];
+  const keys = [["1","2","3"],["4","5","6"],["7","8","9"],["","0","⌫"]];
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -1398,42 +1407,22 @@ function LoginView({ onLogin }) {
         <div style={{ fontSize: mob ? 14 : 18, fontFamily: "'Marisa',serif", textTransform: "uppercase", letterSpacing: "0.12em", color: C.text, marginTop: 12 }}>Monte Dourado</div>
         <div style={{ fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif", marginTop: 4, letterSpacing: "0.06em" }}>Painel de desempenho digital</div>
       </div>
-
       <div style={{ fontSize: 11, color: C.sec, fontFamily: "'Gotham',sans-serif", marginBottom: 20, letterSpacing: "0.04em" }}>Digite seu PIN de acesso</div>
-
-      {/* Dots */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>{dots}</div>
-
-      {/* Erro */}
-      {error && <div style={{ fontSize: 11, color: "#ef4444", fontFamily: "'Gotham',sans-serif", marginBottom: 16, animation: "shake 0.3s" }}>{error}</div>}
-
-      {/* Teclado numérico */}
+      {error && <div style={{ fontSize: 11, color: "#ef4444", fontFamily: "'Gotham',sans-serif", marginBottom: 16 }}>{error}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 64px)", gap: 10 }}>
         {keys.flat().map((k, i) => k === "" ? <div key={i} /> : (
-          <button key={i} onClick={() => k === "⌫" ? handleDelete() : handleDigit(k)}
-            disabled={loading}
-            style={{
-              width: 64, height: 64, borderRadius: "50%", fontSize: k === "⌫" ? 18 : 22,
-              fontFamily: "'Marisa',serif", color: C.text,
-              background: k === "⌫" ? "transparent" : "rgba(255,255,255,0.04)",
-              border: k === "⌫" ? "none" : `1px solid ${C.glassBd}`,
-              cursor: "pointer", transition: "all 0.15s",
-              display: "flex", alignItems: "center", justifyContent: "center"
-            }}
-            onMouseEnter={e => { if(k !== "⌫") e.currentTarget.style.background = C.dourado + "20"; e.currentTarget.style.borderColor = C.dourado + "60"; }}
-            onMouseLeave={e => { if(k !== "⌫") e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = C.glassBd; }}
+          <button key={i} onClick={() => k === "⌫" ? handleDelete() : handleDigit(k)} disabled={loading}
+            style={{ width: 64, height: 64, borderRadius: "50%", fontSize: k === "⌫" ? 18 : 22, fontFamily: "'Marisa',serif", color: C.text, background: k === "⌫" ? "transparent" : "rgba(255,255,255,0.04)", border: k === "⌫" ? "none" : `1px solid ${C.glassBd}`, cursor: "pointer", transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center" }}
           >{k}</button>
         ))}
       </div>
-
-      {/* Lembrar */}
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 24, cursor: "pointer" }}>
         <div onClick={() => setRemember(!remember)} style={{ width: 16, height: 16, borderRadius: 4, border: `1px solid ${remember ? C.dourado : C.glassBd}`, background: remember ? C.dourado + "30" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>
           {remember && <span style={{ fontSize: 10, color: C.dourado }}>✓</span>}
         </div>
         <span style={{ fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Lembrar neste dispositivo</span>
       </label>
-
       {loading && <div style={{ fontSize: 10, color: C.dourado, fontFamily: "'Gotham',sans-serif", marginTop: 16, letterSpacing: "0.06em", textTransform: "uppercase" }}>Verificando...</div>}
     </div>
   );
@@ -1464,9 +1453,13 @@ export default function App() {
     setUser(null);
   };
 
+  const [showAdmin, setShowAdmin] = useState(false);
+
   if (!user) return <LoginView onLogin={setUser} />;
 
-  return user.role === "admin"
-    ? <AdminView onSwitch={handleLogout} C={C} mode={mode} toggle={toggle} user={user} />
-    : <SocioView onSwitch={handleLogout} C={C} mode={mode} toggle={toggle} user={user} />;
+  if (showAdmin && user.role === "admin") {
+    return <AdminView onSwitch={() => setShowAdmin(false)} C={C} mode={mode} toggle={toggle} user={user} />;
+  }
+
+  return <SocioView onSwitch={handleLogout} onAdmin={user.role === "admin" ? () => setShowAdmin(true) : null} C={C} mode={mode} toggle={toggle} user={user} />;
 }
