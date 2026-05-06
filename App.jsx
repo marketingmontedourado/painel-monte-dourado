@@ -50,6 +50,7 @@ const db = {
     "2026-01": { seg:14058, alc:443887, org:9717, pago:434170, views:1110622, inv:77, invGoogle:0, invSeg:77, inter:7196, vis:12290, posts:5, reels:3, stories:6 },
     "2026-02": { seg:14421, alc:212738, org:7505, pago:205233, views:573959, inv:0, inter:4683, vis:5372, posts:8, reels:4, stories:12 },
     "2026-03": { seg:15031, alc:192425, org:11269, pago:181156, views:1008980, inv:0, inter:22820, vis:6594, posts:6, reels:4, stories:69 },
+    "2026-04": { seg:15411, alc:459939, org:459939, pago:0, views:597147, inv:0, inter:4458, vis:0, posts:3, reels:2, stories:0 },
   },
   "vila-chapeu": {
     "2025-08": { seg:0, alc:3397, org:3397, pago:0, views:6031, inv:0, inter:43, vis:727, posts:3, reels:1, stories:0 },
@@ -67,7 +68,7 @@ const db = {
     "2026-01": { seg:1130, alc:16444, org:16444, pago:0, views:45500, inv:19254, invMeta:12392, invGoogle:5413, invSeg:1448, inter:844, vis:784, posts:11, reels:2, stories:0, msgs:668 },
     "2026-02": { seg:1175, alc:2497, org:2497, pago:0, views:12325, inv:10293, invMeta:6740, invGoogle:2738, invSeg:815, inter:278, vis:413, posts:1, reels:1, stories:0, msgs:365 },
     "2026-03": { seg:1220, alc:4203, org:4203, pago:0, views:12376, inv:10807, invMeta:7265, invGoogle:2423, invSeg:1119, inter:389, vis:327, posts:1, reels:1, stories:0, msgs:321 },
-    "2026-04": { seg:1271, alc:3605, org:3605, pago:0, views:14210, inv:0, inter:225, vis:194, posts:8, reels:0, stories:0 },
+    "2026-04": { seg:1271, alc:3605, org:3605, pago:456523, views:14210, inv:8613, invMeta:6299, invGoogle:1027, invSeg:1287, inter:225, vis:194, posts:8, reels:0, stories:0, msgs:339 },
   },
 };
 
@@ -1363,6 +1364,17 @@ function LoginView({ onLogin }) {
     if (newPin.length === 4) submitPin(newPin);
   };
   const handleDelete = () => { setPin(pin.slice(0, -1)); setError(""); };
+
+  // Suporte ao teclado físico (desktop)
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (welcome || loading) return;
+      if (e.key >= "0" && e.key <= "9") handleDigit(e.key);
+      if (e.key === "Backspace" || e.key === "Delete") handleDelete();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  });
 
   const submitPin = async (p) => {
     setLoading(true);
