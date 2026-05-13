@@ -50,7 +50,6 @@ const db = {
     "2026-01": { seg:14058, alc:443887, org:9717, pago:434170, views:1110622, inv:77, invGoogle:0, invSeg:77, inter:7196, vis:12290, posts:5, reels:3, stories:6 },
     "2026-02": { seg:14421, alc:212738, org:7505, pago:205233, views:573959, inv:0, inter:4683, vis:5372, posts:8, reels:4, stories:12 },
     "2026-03": { seg:15031, alc:192425, org:11269, pago:181156, views:1008980, inv:0, inter:22820, vis:6594, posts:6, reels:4, stories:69 },
-    "2026-04": { seg:15411, alc:459939, org:459939, pago:0, views:597147, inv:0, inter:4458, vis:0, posts:3, reels:2, stories:0 },
   },
   "vila-chapeu": {
     "2025-08": { seg:0, alc:3397, org:3397, pago:0, views:6031, inv:0, inter:43, vis:727, posts:3, reels:1, stories:0 },
@@ -68,7 +67,7 @@ const db = {
     "2026-01": { seg:1130, alc:16444, org:16444, pago:0, views:45500, inv:19254, invMeta:12392, invGoogle:5413, invSeg:1448, inter:844, vis:784, posts:11, reels:2, stories:0, msgs:668 },
     "2026-02": { seg:1175, alc:2497, org:2497, pago:0, views:12325, inv:10293, invMeta:6740, invGoogle:2738, invSeg:815, inter:278, vis:413, posts:1, reels:1, stories:0, msgs:365 },
     "2026-03": { seg:1220, alc:4203, org:4203, pago:0, views:12376, inv:10807, invMeta:7265, invGoogle:2423, invSeg:1119, inter:389, vis:327, posts:1, reels:1, stories:0, msgs:321 },
-    "2026-04": { seg:1271, alc:3605, org:3605, pago:456523, views:14210, inv:8613, invMeta:6299, invGoogle:1027, invSeg:1287, inter:225, vis:194, posts:8, reels:0, stories:0, msgs:339 },
+    "2026-04": { seg:1271, alc:3605, org:3605, pago:0, views:14210, inv:0, inter:225, vis:194, posts:8, reels:0, stories:0 },
   },
 };
 
@@ -1138,9 +1137,399 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
 /* ============================================================
    VISÃO DA VITÓRIA (ADMIN)
 ============================================================ */
+/* ============================================================
+   PAINEL META API — dados ao vivo de ads + Instagram orgânico
+============================================================ */
+function LiveMetaPanel({ C, mob }) {
+  const [ads, setAds] = useState({ loading: true, error: null, data: null });
+  const [organic, setOrganic] = useState({ loading: true, error: null, data: null });
+  const [lastSync, setLastSync] = useState(null);
+
+  const refresh = () => {
+    setAds({ loading: true, error: null, data: null });
+    setOrganic({ loading: true, error: null, data: null });
+    fetch("/api/meta-ads")
+      .then(r => r.json())
+      .then(j => setAds({ loading: false, error: j.success ? null : (j.error || "Erro"), data: j }))
+      .catch(e => setAds({ loading: false, error: e?.message || "Erro de rede", data: null }));
+    fetch("/api/meta-organic")
+      .then(r => r.json())
+      .then(j => setOrganic({ loading: false, error: j.success ? null : (j.error || "Erro"), data: j }))
+      .catch(e => setOrganic({ loading: false, error: e?.message || "Erro de rede", data: null }));
+    setLastSync(new Date());
+  };
+
+  useEffect(() => { refresh(); }, []);
+
+  const card = { background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 20 };
+  const lab = { fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Marisa',serif" };
+  const val = { fontSize: 22, fontWeight: 400, color: C.text, fontFamily: "'Marisa',serif" };
+  const sec = { fontSize: 11, color: C.mut, marginTop: 4 };
+  const btnOut = { padding: "8px 14px", background: "transparent", border: `1px solid ${C.border}`, color: C.sec, borderRadius: 8, cursor: "pointer", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" };
+
+  const loading = ads.loading || organic.loading;
+  const adsData = ads.data;
+  const orgData = organic.data;
+
+  // Agrega por campanha — soma todos os meses retornados
+  const campaignAgg = {};
+  (adsData?.data || []).forEach(row => {
+    const k = row.campaign_id;
+    if (!campaignAgg[k]) {
+      campaignAgg[k] = {
+        id: row.campaign_id,
+        name: row.campaign_name,
+        status: row.campaign_status,
+        objective: row.campaign_objective,
+        spend: 0, impressions: 0, reach: 0, clicks: 0, messages: 0, leads: 0,
+        months: 0,
+      };
+    }
+    const a = campaignAgg[k];
+    a.spend += row.spend; a.impressions += row.impressions; a.reach += row.reach;
+    a.clicks += row.clicks; a.messages += row.messages; a.leads += row.leads;
+    a.months++;
+  });
+  const campaigns = Object.values(campaignAgg).sort((a,b) => b.spend - a.spend);
+
+  // Totais agregados
+  const totalSpend = campaigns.reduce((s, c) => s + c.spend, 0);
+  const totalMessages = campaigns.reduce((s, c) => s + c.messages, 0);
+  const totalReach = campaigns.reduce((s, c) => s + c.reach, 0);
+  const totalClicks = campaigns.reduce((s, c) => s + c.clicks, 0);
+
+  const fmtBRL = (n) => "R$ " + (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtN = (n) => (n || 0).toLocaleString("pt-BR");
+
+  return <div>
+    {/* CABEÇALHO */}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+      <div>
+        <h2 style={{ fontSize: 24, fontWeight: 400, fontFamily: "'Marisa',serif", margin: 0, color: C.text }}>Meta API · dados ao vivo</h2>
+        <div style={{ fontSize: 11, color: C.mut, marginTop: 4 }}>
+          {loading ? "Sincronizando..." : (lastSync ? `Última sincronização: ${lastSync.toLocaleString("pt-BR")}` : "—")}
+        </div>
+      </div>
+      <button onClick={refresh} disabled={loading} style={{ ...btnOut, opacity: loading ? 0.5 : 1 }}>{loading ? "Sincronizando..." : "Atualizar agora"}</button>
+    </div>
+
+    {/* STATUS CONTA DE ANÚNCIOS */}
+    {adsData?.account && (
+      <div style={{ ...card, marginBottom: 16, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div style={lab}>Conta de anúncios</div>
+          <div style={val}>{adsData.account.name}</div>
+          <div style={sec}>{adsData.account.id} · {adsData.account.currency} · {adsData.account.timezone}</div>
+        </div>
+        <div>
+          <div style={lab}>Período consultado</div>
+          <div style={{ fontSize: 14, color: C.text, marginTop: 8 }}>{adsData.period?.since} → {adsData.period?.until}</div>
+          <div style={sec}>{adsData.total_rows} linhas · {campaigns.length} campanhas</div>
+        </div>
+      </div>
+    )}
+
+    {/* ERROS */}
+    {ads.error && <div style={{ ...card, marginBottom: 16, background: C.down + "10", borderColor: C.down + "44" }}>
+      <div style={{ fontSize: 12, color: C.down, marginBottom: 4 }}>Erro ao puxar dados de ads</div>
+      <div style={{ fontSize: 11, color: C.sec }}>{ads.error}</div>
+    </div>}
+    {organic.error && <div style={{ ...card, marginBottom: 16, background: C.down + "10", borderColor: C.down + "44" }}>
+      <div style={{ fontSize: 12, color: C.down, marginBottom: 4 }}>Erro ao puxar dados orgânicos</div>
+      <div style={{ fontSize: 11, color: C.sec }}>{organic.error}</div>
+    </div>}
+
+    {/* KPIs ADS AGREGADOS */}
+    {!ads.loading && adsData?.success && (
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+        <div style={card}><div style={lab}>Investido total</div><div style={val}>{fmtBRL(totalSpend)}</div><div style={sec}>período consultado</div></div>
+        <div style={card}><div style={lab}>Alcance total</div><div style={val}>{fmtN(totalReach)}</div><div style={sec}>somatório</div></div>
+        <div style={card}><div style={lab}>Cliques</div><div style={val}>{fmtN(totalClicks)}</div><div style={sec}>período consultado</div></div>
+        <div style={card}><div style={lab}>Mensagens iniciadas</div><div style={val}>{fmtN(totalMessages)}</div><div style={sec}>conversas geradas</div></div>
+      </div>
+    )}
+
+    {/* CAMPANHAS */}
+    {!ads.loading && campaigns.length > 0 && (
+      <div style={{ ...card, marginBottom: 20 }}>
+        <div style={{ ...lab, marginBottom: 12 }}>Campanhas ({campaigns.length})</div>
+        <div style={{ maxHeight: 400, overflowY: "auto" }}>
+          {campaigns.map((c, i) => (
+            <div key={c.id} style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 90px 90px 90px 90px", gap: 8, padding: "10px 0", borderBottom: i === campaigns.length - 1 ? "none" : `1px solid ${C.borderL}`, fontSize: 12, alignItems: "center" }}>
+              <div>
+                <div style={{ color: C.text, fontWeight: 500, fontSize: 13 }}>{c.name}</div>
+                <div style={{ color: C.mut, fontSize: 10, marginTop: 2 }}>
+                  <span style={{ padding: "2px 6px", borderRadius: 3, background: (c.status === "ACTIVE" ? C.up : C.mut) + "22", color: c.status === "ACTIVE" ? C.up : C.mut, fontSize: 9, letterSpacing: "0.04em", textTransform: "uppercase", marginRight: 6 }}>{c.status || "—"}</span>
+                  {c.objective || "—"} · {c.months} {c.months === 1 ? "mês" : "meses"}
+                </div>
+              </div>
+              <div style={{ textAlign: mob ? "left" : "right", color: C.dourado, fontWeight: 500 }}>{fmtBRL(c.spend)}</div>
+              <div style={{ textAlign: mob ? "left" : "right", color: C.sec }}>{fmtN(c.reach)}</div>
+              <div style={{ textAlign: mob ? "left" : "right", color: C.sec }}>{fmtN(c.clicks)} cliques</div>
+              <div style={{ textAlign: mob ? "left" : "right", color: C.text }}>{fmtN(c.messages)} msgs</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* INSTAGRAM ORGÂNICO */}
+    {!organic.loading && orgData?.success && orgData.accounts?.length > 0 && (
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ ...lab, marginBottom: 12 }}>Instagram orgânico ({orgData.count} contas)</div>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12 }}>
+          {orgData.accounts.map(acc => (
+            <div key={acc.ig_user_id} style={card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: C.text }}>@{acc.username}</div>
+                  <div style={{ fontSize: 11, color: C.mut, marginTop: 2 }}>{acc.name}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 20, fontWeight: 400, color: C.dourado, fontFamily: "'Marisa',serif" }}>{fmtN(acc.followers_count)}</div>
+                  <div style={{ fontSize: 10, color: C.mut, textTransform: "uppercase", letterSpacing: "0.08em" }}>seguidores</div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 11, color: C.sec, paddingTop: 12, borderTop: `1px solid ${C.borderL}` }}>
+                <div>
+                  <div style={{ color: C.mut, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Alcance {acc.period_days}d</div>
+                  <div style={{ color: C.text, fontWeight: 500 }}>{fmtN(acc.insights_summary?.reach)}</div>
+                </div>
+                <div>
+                  <div style={{ color: C.mut, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Impressões {acc.period_days}d</div>
+                  <div style={{ color: C.text, fontWeight: 500 }}>{fmtN(acc.insights_summary?.impressions)}</div>
+                </div>
+                <div>
+                  <div style={{ color: C.mut, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>Visitas perfil {acc.period_days}d</div>
+                  <div style={{ color: C.text, fontWeight: 500 }}>{fmtN(acc.insights_summary?.profile_views)}</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 10, color: C.mut, marginTop: 8 }}>{acc.media_count} posts · página vinculada: {acc.page?.name}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {/* LOADING */}
+    {loading && !adsData && !orgData && (
+      <div style={{ ...card, textAlign: "center", padding: "60px 20px" }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", border: `2px solid ${C.border}`, borderTopColor: C.dourado, margin: "0 auto 16px", animation: "spin 1s linear infinite" }} />
+        <div style={{ fontSize: 13, color: C.sec }}>Consultando Meta API...</div>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    )}
+
+    {/* JSON DEBUG (collapsível) */}
+    <details style={{ ...card, marginTop: 16 }}>
+      <summary style={{ cursor: "pointer", fontSize: 11, color: C.mut, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>JSON bruto (debug)</summary>
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 10, color: C.douDim, marginBottom: 4 }}>/api/meta-ads</div>
+          <pre style={{ background: C.bg, padding: 10, borderRadius: 6, fontSize: 10, color: C.sec, overflow: "auto", maxHeight: 300, margin: 0 }}>{JSON.stringify(adsData, null, 2)}</pre>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: C.douDim, marginBottom: 4 }}>/api/meta-organic</div>
+          <pre style={{ background: C.bg, padding: 10, borderRadius: 6, fontSize: 10, color: C.sec, overflow: "auto", maxHeight: 300, margin: 0 }}>{JSON.stringify(orgData, null, 2)}</pre>
+        </div>
+      </div>
+    </details>
+  </div>;
+}
+
+/* ============================================================
+   PAINEL DE ANALYTICS — registros de acesso ao dashboard
+============================================================ */
+function AnalyticsPanel({ C, mob }) {
+  const [state, setState] = useState({ loading: true, error: null, events: [] });
+
+  const refresh = () => {
+    setState({ loading: true, error: null, events: [] });
+    fetch("/api/track")
+      .then(r => r.json())
+      .then(j => setState({ loading: false, error: null, events: Array.isArray(j.data) ? j.data : [] }))
+      .catch(e => setState({ loading: false, error: e?.message || "Erro ao carregar", events: [] }));
+  };
+
+  useEffect(() => { refresh(); }, []);
+
+  const { loading, error, events } = state;
+  const parsed = (events || []).map(ev => {
+    const d = new Date(ev.timestamp);
+    return { ...ev, _date: isNaN(d.getTime()) ? null : d };
+  }).filter(ev => ev._date).sort((a, b) => b._date - a._date);
+
+  const total = parsed.length;
+  const logins = parsed.filter(e => e.evento === "login").length;
+  const usuariosUnicos = new Set(parsed.filter(e => e.nome).map(e => e.nome)).size;
+  const ultimo = parsed[0]?._date;
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const eventosHoje = parsed.filter(e => e._date >= hoje).length;
+  const seteDias = new Date(); seteDias.setDate(seteDias.getDate() - 6); seteDias.setHours(0,0,0,0);
+  const eventos7d = parsed.filter(e => e._date >= seteDias).length;
+
+  const byUser = {};
+  parsed.forEach(e => { if (e.nome) byUser[e.nome] = (byUser[e.nome] || 0) + 1; });
+  const topUsers = Object.entries(byUser).sort((a,b) => b[1] - a[1]);
+
+  const tabLabels = { "monte-dourado": "Monte Dourado", empreendimentos: "Empreendimentos", eventos: "Eventos", financeiro: "Financeiro" };
+  const byTab = {};
+  parsed.filter(e => e.aba).forEach(e => { byTab[e.aba] = (byTab[e.aba] || 0) + 1; });
+  const topTabs = Object.entries(byTab).sort((a,b) => b[1] - a[1]);
+  const totalTab = topTabs.reduce((s, [,v]) => s + v, 0);
+
+  const brandLabels = { "monte-dourado": "Monte Dourado", "vila-chapeu": "Vila do Chapéu", "vila-morro": "Vila do Morro", "vila-ilha": "Vila da Ilha" };
+  const byBrand = {};
+  parsed.filter(e => e.marca).forEach(e => { byBrand[e.marca] = (byBrand[e.marca] || 0) + 1; });
+  const topBrands = Object.entries(byBrand).sort((a,b) => b[1] - a[1]);
+  const totalBrand = topBrands.reduce((s, [,v]) => s + v, 0);
+
+  const dias = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0,0,0,0);
+    dias.push({ key: d.toISOString().slice(0,10), label: `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}`, count: 0 });
+  }
+  parsed.forEach(e => {
+    const k = e._date.toISOString().slice(0,10);
+    const slot = dias.find(d => d.key === k);
+    if (slot) slot.count++;
+  });
+
+  const card = { background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 20 };
+  const lab = { fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Marisa',serif" };
+  const val = { fontSize: 28, fontWeight: 400, color: C.text, fontFamily: "'Marisa',serif" };
+  const sec = { fontSize: 11, color: C.mut, marginTop: 4 };
+  const btnOut = { padding: "8px 14px", background: "transparent", border: `1px solid ${C.border}`, color: C.sec, borderRadius: 8, cursor: "pointer", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" };
+  const btnDou = { padding: "10px 20px", background: C.dourado, color: C.bg, border: "none", borderRadius: 8, cursor: "pointer", fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" };
+
+  if (loading) return <div style={{ textAlign: "center", padding: "60px 20px" }}>
+    <div style={{ width: 40, height: 40, borderRadius: "50%", border: `2px solid ${C.border}`, borderTopColor: C.dourado, margin: "0 auto 16px", animation: "spin 1s linear infinite" }} />
+    <div style={{ fontSize: 13, color: C.sec }}>Carregando registros de acesso...</div>
+    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+  </div>;
+
+  if (error) return <div style={{ ...card, textAlign: "center" }}>
+    <div style={{ fontSize: 14, color: C.down, marginBottom: 8 }}>Não foi possível carregar os acessos</div>
+    <div style={{ fontSize: 12, color: C.sec, marginBottom: 16 }}>{error}</div>
+    <button onClick={refresh} style={btnDou}>Tentar novamente</button>
+  </div>;
+
+  if (!total) return <div style={{ ...card, textAlign: "center", padding: "60px 20px" }}>
+    <div style={{ fontSize: 16, marginBottom: 8, color: C.text }}>Nenhum acesso registrado ainda</div>
+    <div style={{ fontSize: 12, color: C.sec, marginBottom: 16 }}>Os acessos aparecem aqui assim que o tracking começa a registrar.</div>
+    <button onClick={refresh} style={btnDou}>Atualizar</button>
+  </div>;
+
+  return <div>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+      <div>
+        <h2 style={{ fontSize: 24, fontWeight: 400, fontFamily: "'Marisa',serif", margin: 0, color: C.text }}>Acessos ao painel</h2>
+        <div style={{ fontSize: 11, color: C.mut, marginTop: 4 }}>{total} eventos · {usuariosUnicos} usuários · última atividade {ultimo ? ultimo.toLocaleString("pt-BR") : "—"}</div>
+      </div>
+      <button onClick={refresh} style={btnOut}>Atualizar</button>
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div style={card}><div style={lab}>Logins</div><div style={val}>{logins}</div><div style={sec}>desde o início</div></div>
+      <div style={card}><div style={lab}>Usuários únicos</div><div style={val}>{usuariosUnicos}</div><div style={sec}>de 5 cadastrados</div></div>
+      <div style={card}><div style={lab}>Hoje</div><div style={val}>{eventosHoje}</div><div style={sec}>eventos registrados</div></div>
+      <div style={card}><div style={lab}>Últimos 7 dias</div><div style={val}>{eventos7d}</div><div style={sec}>eventos registrados</div></div>
+    </div>
+
+    <div style={{ ...card, marginBottom: 20 }}>
+      <div style={lab}>Acessos por dia (últimos 30 dias)</div>
+      <div style={{ height: 200, marginTop: 12 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={dias}>
+            <defs>
+              <linearGradient id="acessoGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={C.dourado} stopOpacity={0.4} />
+                <stop offset="100%" stopColor={C.dourado} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+            <XAxis dataKey="label" tick={{ fill: C.mut, fontSize: 10 }} stroke={C.border} />
+            <YAxis tick={{ fill: C.mut, fontSize: 10 }} stroke={C.border} allowDecimals={false} />
+            <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 }} labelStyle={{ color: C.sec }} />
+            <Area type="monotone" dataKey="count" stroke={C.dourado} fill="url(#acessoGrad)" strokeWidth={2} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 20 }}>
+      <div style={card}>
+        <div style={lab}>Por usuário</div>
+        {topUsers.length === 0 ? <div style={{ fontSize: 12, color: C.mut, marginTop: 8 }}>Sem registros</div> :
+          topUsers.map(([nome, qtd]) => {
+            const pct = total > 0 ? (qtd / total * 100) : 0;
+            return <div key={nome} style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: C.text }}>{nome}</span>
+                <span style={{ fontSize: 11, color: C.mut }}>{qtd} <span style={{ color: C.douDim }}>· {pct.toFixed(0)}%</span></span>
+              </div>
+              <div style={{ height: 4, background: C.progressBg, borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: C.dourado, borderRadius: 2 }} />
+              </div>
+            </div>;
+          })}
+      </div>
+      <div style={card}>
+        <div style={lab}>Abas mais acessadas</div>
+        {topTabs.length === 0 ? <div style={{ fontSize: 12, color: C.mut, marginTop: 8 }}>Sem registros</div> :
+          topTabs.map(([aba, qtd]) => {
+            const pct = totalTab > 0 ? (qtd / totalTab * 100) : 0;
+            return <div key={aba} style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: C.text }}>{tabLabels[aba] || aba}</span>
+                <span style={{ fontSize: 11, color: C.mut }}>{qtd}</span>
+              </div>
+              <div style={{ height: 4, background: C.progressBg, borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: C.dourado, borderRadius: 2 }} />
+              </div>
+            </div>;
+          })}
+        <div style={{ ...lab, marginTop: 22 }}>Marcas visualizadas</div>
+        {topBrands.length === 0 ? <div style={{ fontSize: 12, color: C.mut, marginTop: 8 }}>Sem registros</div> :
+          topBrands.map(([marca, qtd]) => {
+            const pct = totalBrand > 0 ? (qtd / totalBrand * 100) : 0;
+            return <div key={marca} style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: C.text }}>{brandLabels[marca] || marca}</span>
+                <span style={{ fontSize: 11, color: C.mut }}>{qtd}</span>
+              </div>
+              <div style={{ height: 4, background: C.progressBg, borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: C.dourado, borderRadius: 2 }} />
+              </div>
+            </div>;
+          })}
+      </div>
+    </div>
+
+    <div style={card}>
+      <div style={lab}>Últimos eventos</div>
+      <div style={{ marginTop: 12, maxHeight: 380, overflowY: "auto" }}>
+        {parsed.slice(0, 50).map((e, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "150px 130px 1fr", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.borderL}`, fontSize: 12, alignItems: "center" }}>
+            <div style={{ color: C.mut, fontFamily: "'Gotham',sans-serif" }}>{e._date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</div>
+            <div style={{ color: C.text, fontWeight: 500 }}>{e.nome || "—"}</div>
+            <div style={{ color: C.sec, fontSize: 11 }}>
+              <span style={{ padding: "2px 8px", borderRadius: 4, background: C.dourado + "18", color: C.dourado, fontSize: 10, marginRight: 8, letterSpacing: "0.04em", textTransform: "uppercase" }}>{e.evento || "—"}</span>
+              {e.aba && <span style={{ marginRight: 8 }}>{tabLabels[e.aba] || e.aba}</span>}
+              {e.marca && <span style={{ marginRight: 8 }}>· {brandLabels[e.marca] || e.marca}</span>}
+              {e.periodo && <span style={{ color: C.mut }}>· {e.periodo}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>;
+}
+
 function AdminView({ onSwitch, C, mode, toggle, user }) {
   const mob = useM();
   useEffect(() => { if (!document.querySelector("[data-md-fonts]")) { const s = document.createElement("style"); s.textContent = FONT_CSS; s.dataset.mdFonts = "1"; document.head.appendChild(s); } }, []);
+  const [panel, setPanel] = useState("reports"); // reports | analytics
   const [step, setStep] = useState("select"); // select | upload | extracting | review | done
   const [brandId, setBrandId] = useState("monte-dourado");
   const [periodKey, setPeriodKey] = useState("2026-03");
@@ -1200,7 +1589,23 @@ function AdminView({ onSwitch, C, mode, toggle, user }) {
       </div>
     </header>
 
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: mob ? "24px 14px" : "32px 20px" }}>
+    <main style={{ maxWidth: panel === "analytics" ? 1100 : 720, margin: "0 auto", padding: mob ? "24px 14px" : "32px 20px" }}>
+
+      {/* TABS DE NAVEGAÇÃO ADMIN */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 28, borderBottom: `1px solid ${C.glassBd}` }}>
+        {[{ id: "reports", label: "Relatórios" }, { id: "analytics", label: "Acessos" }, { id: "meta", label: "Meta API" }].map(t => (
+          <button key={t.id} onClick={() => setPanel(t.id)} style={{
+            background: "transparent", border: "none", padding: "10px 16px",
+            fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase",
+            fontFamily: "'Marisa',serif", cursor: "pointer",
+            color: panel === t.id ? C.dourado : C.mut,
+            borderBottom: panel === t.id ? `2px solid ${C.dourado}` : "2px solid transparent",
+            marginBottom: -1, transition: "color 0.15s"
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {panel === "reports" && (<>
 
       {/* SELECT */}
       {step === "select" && (
@@ -1329,6 +1734,11 @@ function AdminView({ onSwitch, C, mode, toggle, user }) {
           </div>
         </div>
       )}
+      </>)}
+
+      {panel === "analytics" && <AnalyticsPanel C={C} mob={mob} />}
+
+      {panel === "meta" && <LiveMetaPanel C={C} mob={mob} />}
     </main>
 
     {/* FOOTER */}
@@ -1364,17 +1774,6 @@ function LoginView({ onLogin }) {
     if (newPin.length === 4) submitPin(newPin);
   };
   const handleDelete = () => { setPin(pin.slice(0, -1)); setError(""); };
-
-  // Suporte ao teclado físico (desktop)
-  useEffect(() => {
-    const handleKey = (e) => {
-      if (welcome || loading) return;
-      if (e.key >= "0" && e.key <= "9") handleDigit(e.key);
-      if (e.key === "Backspace" || e.key === "Delete") handleDelete();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  });
 
   const submitPin = async (p) => {
     setLoading(true);
