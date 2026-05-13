@@ -71,6 +71,95 @@ const db = {
   },
 };
 
+// ============================================================
+// OVERLAY de dados ao vivo (Meta API) — muta o db global em runtime
+// ============================================================
+function brandFromCampaign(name) {
+  if (!name) return null;
+  const n = String(name).toUpperCase();
+  if (n.includes("[V.MORRO]") || n.includes("[VILA DO MORRO]") || n.includes("VILA DO MORRO")) return "vila-morro";
+  if (n.includes("[V.CHAPEU]") || n.includes("[V.CHAPÉU]") || n.includes("CHAPEU") || n.includes("CHAPÉU")) return "vila-chapeu";
+  if (n.includes("[V.ILHA]") || n.includes("VILA DA ILHA")) return "vila-ilha";
+  return "monte-dourado";
+}
+
+const usernameToBrand = {
+  "monte.dourado": "monte-dourado",
+  "viladochapeutaiba": "vila-chapeu",
+  "viladomorro": "vila-morro",
+  "viladailha": "vila-ilha",
+};
+
+// Snapshot dos valores originais (pra poder restaurar antes de re-aplicar overlay)
+const _dbSnapshot = JSON.parse(JSON.stringify(db));
+
+function applyMetaOverlay(adsResp, organicResp) {
+  // 1. Restaura db pro snapshot original
+  Object.keys(db).forEach(brand => {
+    Object.keys(db[brand] || {}).forEach(pk => { delete db[brand][pk]; });
+    if (_dbSnapshot[brand]) {
+      Object.keys(_dbSnapshot[brand]).forEach(pk => {
+        db[brand][pk] = { ..._dbSnapshot[brand][pk] };
+      });
+    }
+  });
+
+  // 2. Aplica dados de ADS (Meta Marketing API)
+  if (adsResp && adsResp.success && Array.isArray(adsResp.data)) {
+    const buffer = {};
+    adsResp.data.forEach(row => {
+      const brand = brandFromCampaign(row.campaign_name);
+      if (!brand) return;
+      const pk = row.month;
+      if (!pk) return;
+      if (!buffer[brand]) buffer[brand] = {};
+      if (!buffer[brand][pk]) buffer[brand][pk] = { spend: 0, msgs: 0, reach: 0, clicks: 0, impressions: 0 };
+      const b = buffer[brand][pk];
+      b.spend += row.spend || 0;
+      b.msgs += row.messages || 0;
+      b.reach += row.reach || 0;
+      b.clicks += row.clicks || 0;
+      b.impressions += row.impressions || 0;
+    });
+
+    Object.keys(buffer).forEach(brand => {
+      if (!db[brand]) db[brand] = {};
+      Object.keys(buffer[brand]).forEach(pk => {
+        const live = buffer[brand][pk];
+        if (!db[brand][pk]) {
+          // Mês novo da API que não existia hardcoded — cria entrada base
+          db[brand][pk] = { seg: 0, alc: 0, org: 0, pago: 0, views: 0, inv: 0, inter: 0, vis: 0, posts: 0, reels: 0, stories: 0 };
+        }
+        const slot = db[brand][pk];
+        // Sobrescreve campos da Meta com valores ao vivo
+        slot.invMeta = Math.round(live.spend);
+        // Recalcula investimento total (Meta + Google + Seg do hardcoded)
+        slot.inv = Math.round(live.spend + (slot.invGoogle || 0) + (slot.invSeg || 0));
+        slot.msgs = live.msgs;
+        // Atualiza alcance pago e total
+        slot.pago = live.reach;
+        slot.alc = (slot.org || 0) + live.reach;
+        slot._live = true;
+      });
+    });
+  }
+
+  // 3. Aplica dados ORGÂNICOS — atualiza seguidores no mês mais recente disponível
+  if (organicResp && organicResp.success && Array.isArray(organicResp.accounts)) {
+    organicResp.accounts.forEach(acc => {
+      const brand = usernameToBrand[acc.username];
+      if (!brand || !db[brand]) return;
+      const months = Object.keys(db[brand]).sort();
+      if (months.length === 0) return;
+      const latestMonth = months[months.length - 1];
+      if (acc.followers_count != null) {
+        db[brand][latestMonth].seg = acc.followers_count;
+        db[brand][latestMonth]._live = true;
+      }
+    });
+  }
+}
+
 // Todos os períodos ordenados
 const allPeriods = [...new Set(Object.values(db).flatMap(b => Object.keys(b)))].sort();
 const periodLabels = { "2025-05":"Mai 25","2025-06":"Jun 25","2025-07":"Jul 25","2025-08":"Ago 25","2025-09":"Set 25","2025-10":"Out 25","2025-11":"Nov 25","2025-12":"Dez 25","2026-01":"Jan 26","2026-02":"Fev 26","2026-03":"Mar 26","2026-04":"Abr 26" };
@@ -280,6 +369,27 @@ function MdSymbol({ color = "#89765A", size = 48 }) {
    VISÃO DO SÓCIO — Redesign DashCortex
 ============================================================ */
 function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
+  const [liveSyncAt, setLiveSyncAt] = useState(null);
+  const [liveError, setLiveError] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch("/api/meta-ads").then(r => r.json()).catch(e => ({ success: false, error: e?.message })),
+      fetch("/api/meta-organic").then(r => r.json()).catch(e => ({ success: false, error: e?.message })),
+    ]).then(([adsResp, orgResp]) => {
+      if (cancelled) return;
+      try {
+        applyMetaOverlay(adsResp, orgResp);
+        setLiveSyncAt(new Date());
+        if (!adsResp?.success && !orgResp?.success) {
+          setLiveError(adsResp?.error || orgResp?.error || "Erro desconhecido");
+        }
+      } catch (e) {
+        setLiveError(e?.message || "Erro ao aplicar overlay");
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
   const mob = useM();
   useEffect(() => { const s = document.createElement("style"); s.textContent = FONT_CSS; document.head.appendChild(s); return () => s.remove(); }, []);
   const [tab, setTab] = useState("monte-dourado");
@@ -432,6 +542,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
           <button onClick={onSwitch} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, borderRadius: 6, opacity: 0.5 }} title="Sair">
             <Lock size={15} color={C.sec} strokeWidth={1.5} />
           </button>
+          {liveSyncAt && <div title={`Sincronizado com Meta API em ${liveSyncAt.toLocaleString("pt-BR")}`} style={{ fontSize: 7, color: C.up, fontFamily: "'Marisa',serif", textAlign: "center", letterSpacing: "0.16em", textTransform: "uppercase", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}><span style={{ width: 5, height: 5, borderRadius: "50%", background: C.up, display: "inline-block", animation: "pulse 1.6s ease infinite" }} />Ao vivo</div>}
           {onAdmin && <button onClick={onAdmin} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 4, opacity: 0.6, fontSize: 7, color: C.dourado, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.06em" }} title="Admin">ADMIN</button>}
           {user && <div style={{ fontSize: 7, color: C.mut, fontFamily: "'Gotham',sans-serif", textAlign: "center", marginTop: 2 }}>{user.name?.split(" ")[0]}</div>}
         </aside>
@@ -1774,6 +1885,27 @@ function LoginView({ onLogin }) {
     if (newPin.length === 4) submitPin(newPin);
   };
   const handleDelete = () => { setPin(pin.slice(0, -1)); setError(""); };
+
+  // Suporte ao teclado físico (desktop) — números 0-9, Backspace e Enter
+  useEffect(() => {
+    const onKey = (e) => {
+      if (loading || welcome) return;
+      if (e.key >= "0" && e.key <= "9") {
+        e.preventDefault();
+        if (pin.length < 4) {
+          const newPin = pin + e.key;
+          setPin(newPin);
+          setError("");
+          if (newPin.length === 4) submitPin(newPin);
+        }
+      } else if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pin, loading, welcome]);
 
   const submitPin = async (p) => {
     setLoading(true);
