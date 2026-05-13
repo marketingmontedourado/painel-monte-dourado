@@ -9,7 +9,7 @@
 //
 // Query params (opcionais):
 //   ig_user_id=...        → filtra por uma conta específica do IG
-//   days=30               → janela de insights (default: 30, max: 90 na Meta API)
+//   days=28               → janela de insights (default: 28; máx prático com period=days_28: 28)
 //   include_media=1       → também retorna mídia recente com insights individuais
 //
 // Retorna JSON: { success, accounts: [...com seguidores, insights, media opcional] }
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   if (!token) return res.status(500).json({ error: "META_ACCESS_TOKEN não configurado" });
 
   const filterIg = req.query.ig_user_id || null;
-  const days = Math.min(parseInt(req.query.days || "30", 10), 90);
+  const days = Math.min(parseInt(req.query.days || "28", 10), 90);
   const includeMedia = req.query.include_media === "1";
 
   try {
@@ -52,46 +52,57 @@ export default async function handler(req, res) {
         access_token: token,
       });
 
-      // 3) Insights agregados dos últimos N dias
-      const metricsAccount = [
-        "reach",
-        "impressions",
-        "profile_views",
-        "website_clicks",
-        "follower_count",
-      ];
-
       const since = Math.floor((Date.now() - days * 86400 * 1000) / 1000);
       const until = Math.floor(Date.now() / 1000);
 
-      let insights = [];
-      try {
-        const r = await metaFetch(`${GRAPH_URL}/${igRef.id}/insights`, {
-          metric: metricsAccount.join(","),
-          period: "day",
-          since,
-          until,
-          access_token: token,
-        });
-        insights = r.data || [];
-      } catch (e) {
-        // Algumas contas podem rejeitar certas métricas — ignora e segue
-        insights = [{ error: e.message }];
+      // 3) Insights agregados — Meta v22 deprecou `impressions`, agora é `views`.
+      //    Métricas válidas com period=day: reach, profile_views, follower_count, website_clicks
+      //    Métricas com period=days_28: reach (com total_value)
+      //    Métricas com metric_type=total_value: views, reach, total_interactions, accounts_engaged
+      const summaryByMetric = {};
+      const seriesByMetric = {};
+      const insightErrors = {};
+
+      // 3a) Métricas que aceitam period=day e retornam série temporal
+      const dailyMetrics = ["reach", "profile_views", "follower_count", "website_clicks"];
+      for (const m of dailyMetrics) {
+        try {
+          const r = await metaFetch(`${GRAPH_URL}/${igRef.id}/insights`, {
+            metric: m,
+            period: "day",
+            since,
+            until,
+            access_token: token,
+          });
+          const arr = r.data?.[0]?.values || [];
+          seriesByMetric[m] = arr.map(v => ({
+            date: v.end_time?.slice(0, 10),
+            value: parseInt(v.value, 10) || 0,
+          }));
+          summaryByMetric[m] = arr.reduce((s, v) => s + (parseInt(v.value, 10) || 0), 0);
+        } catch (e) {
+          insightErrors[m] = e.message;
+        }
       }
 
-      // Agrega insights diários em soma/serie temporal
-      const insightSummary = {};
-      const insightSeries = {};
-      insights.forEach(metric => {
-        if (metric.error) return;
-        const name = metric.name;
-        const vals = metric.values || [];
-        insightSummary[name] = vals.reduce((s, v) => s + (parseInt(v.value, 10) || 0), 0);
-        insightSeries[name] = vals.map(v => ({
-          date: v.end_time?.slice(0, 10),
-          value: parseInt(v.value, 10) || 0,
-        }));
-      });
+      // 3b) Métricas com metric_type=total_value (views agregadas, etc.)
+      const totalValueMetrics = ["views", "total_interactions", "accounts_engaged", "likes", "comments", "shares", "saves", "replies"];
+      for (const m of totalValueMetrics) {
+        try {
+          const r = await metaFetch(`${GRAPH_URL}/${igRef.id}/insights`, {
+            metric: m,
+            metric_type: "total_value",
+            period: "day",
+            since,
+            until,
+            access_token: token,
+          });
+          const v = r.data?.[0]?.total_value?.value;
+          if (v != null) summaryByMetric[m] = parseInt(v, 10) || 0;
+        } catch (e) {
+          insightErrors[m] = e.message;
+        }
+      }
 
       const account = {
         ig_user_id: igInfo.id,
@@ -105,8 +116,9 @@ export default async function handler(req, res) {
         website: igInfo.website,
         page: { id: page.id, name: page.name },
         period_days: days,
-        insights_summary: insightSummary,
-        insights_series: insightSeries,
+        insights_summary: summaryByMetric,
+        insights_series: seriesByMetric,
+        insights_errors: Object.keys(insightErrors).length ? insightErrors : undefined,
       };
 
       // 4) Mídia recente com insights individuais (opcional)
@@ -118,7 +130,6 @@ export default async function handler(req, res) {
             limit: 50,
           }, 3);
 
-          // Pra cada post, busca insights individuais
           const enriched = [];
           for (const m of mediaItems) {
             const mediaMetrics = mediaMetricsByType(m.media_type, m.media_product_type);
@@ -161,51 +172,15 @@ export default async function handler(req, res) {
 // ----- Helpers -----
 
 function mediaMetricsByType(mediaType, productType) {
+  // Meta v22 — algumas métricas foram deprecadas e substituídas por `views`
   if (productType === "REELS") {
-    return ["reach", "plays", "likes", "comments", "shares", "saved", "total_interactions"];
+    return ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"];
   }
   if (mediaType === "VIDEO") {
-    return ["reach", "video_views", "likes", "comments", "shares", "saved"];
+    return ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"];
   }
   if (mediaType === "CAROUSEL_ALBUM") {
-    return ["reach", "impressions", "likes", "comments", "shares", "saved"];
+    return ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"];
   }
   if (mediaType === "IMAGE") {
-    return ["reach", "impressions", "likes", "comments", "shares", "saved"];
-  }
-  return null;
-}
-
-async function metaFetch(url, params) {
-  const qs = new URLSearchParams(params).toString();
-  const r = await fetch(`${url}?${qs}`);
-  const json = await r.json();
-  if (!r.ok || json.error) {
-    const e = new Error(json.error?.message || `HTTP ${r.status}`);
-    e.details = json.error || null;
-    throw e;
-  }
-  return json;
-}
-
-async function metaFetchAllPages(url, params, maxPages = 20) {
-  const out = [];
-  let next = null;
-  let qs = new URLSearchParams(params).toString();
-  let page = 0;
-  while (page < maxPages) {
-    const fullUrl = next || `${url}?${qs}`;
-    const r = await fetch(fullUrl);
-    const json = await r.json();
-    if (!r.ok || json.error) {
-      const e = new Error(json.error?.message || `HTTP ${r.status}`);
-      e.details = json.error || null;
-      throw e;
-    }
-    if (Array.isArray(json.data)) out.push(...json.data);
-    next = json.paging?.next || null;
-    if (!next) break;
-    page++;
-  }
-  return out;
-}
+    return ["reach", "views", "likes", "comments", "shares", "saved", "total
