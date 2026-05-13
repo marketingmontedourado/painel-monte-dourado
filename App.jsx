@@ -144,20 +144,66 @@ function applyMetaOverlay(adsResp, organicResp) {
     });
   }
 
-  // 3. Aplica dados ORGÂNICOS — atualiza seguidores no mês mais recente disponível
+  // 3. Aplica dados ORGÂNICOS — agrega séries diárias por mês + atualiza seguidores
   if (organicResp && organicResp.success && Array.isArray(organicResp.accounts)) {
     organicResp.accounts.forEach(acc => {
       const brand = usernameToBrand[acc.username];
-      if (!brand || !db[brand]) return;
-      const months = Object.keys(db[brand]).sort();
-      if (months.length === 0) return;
-      const latestMonth = months[months.length - 1];
-      if (acc.followers_count != null) {
-        db[brand][latestMonth].seg = acc.followers_count;
-        db[brand][latestMonth]._live = true;
+      if (!brand) return;
+      if (!db[brand]) db[brand] = {};
+
+      const reachByMonth = aggregateSeriesByMonth(acc.insights_series?.reach);
+      const profileByMonth = aggregateSeriesByMonth(acc.insights_series?.profile_views);
+      const followerDeltaByMonth = aggregateSeriesByMonth(acc.insights_series?.follower_count);
+
+      // Garante entradas para todos os meses cobertos pela série diária
+      const allMonths = new Set([
+        ...Object.keys(reachByMonth),
+        ...Object.keys(profileByMonth),
+        ...Object.keys(followerDeltaByMonth),
+      ]);
+      allMonths.forEach(pk => {
+        if (!db[brand][pk]) {
+          db[brand][pk] = { seg: 0, alc: 0, org: 0, pago: 0, views: 0, inv: 0, inter: 0, vis: 0, posts: 0, reels: 0, stories: 0 };
+        }
+        const slot = db[brand][pk];
+        if (reachByMonth[pk] != null) {
+          slot.org = reachByMonth[pk];
+          slot.alc = slot.org + (slot.pago || 0);
+        }
+        if (profileByMonth[pk] != null) {
+          slot.vis = profileByMonth[pk];
+        }
+        slot._live = true;
+      });
+
+      // Atualiza seguidores no mês mais recente
+      const monthsSorted = Object.keys(db[brand]).sort();
+      if (monthsSorted.length > 0) {
+        const latestMonth = monthsSorted[monthsSorted.length - 1];
+        if (acc.followers_count != null) {
+          db[brand][latestMonth].seg = acc.followers_count;
+          db[brand][latestMonth]._live = true;
+        }
+        // Distribui views/interactions totais (summary) no mês mais recente
+        const s = acc.insights_summary || {};
+        if (s.views != null) db[brand][latestMonth].views = s.views;
+        if (s.total_interactions != null) db[brand][latestMonth].inter = s.total_interactions;
       }
     });
   }
+}
+
+// Helper: agrega uma série diária [{date, value}] em um objeto { YYYY-MM: sum }
+function aggregateSeriesByMonth(series) {
+  if (!Array.isArray(series)) return {};
+  const out = {};
+  series.forEach(item => {
+    if (!item || !item.date) return;
+    const pk = String(item.date).slice(0, 7);
+    if (!pk) return;
+    out[pk] = (out[pk] || 0) + (parseInt(item.value, 10) || 0);
+  });
+  return out;
 }
 
 // Todos os períodos ordenados
