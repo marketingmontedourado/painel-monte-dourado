@@ -267,25 +267,39 @@ const invHistory = allPeriods.filter(pk => db["vila-morro"]?.[pk]?.inv > 0).map(
 });
 
 // KPIs dinâmicos por marca e período
+// Resolve o mês efetivo pra uma marca: se não houver dados no pedido, cai pro mais recente disponível
+function resolveBrandPeriod(brandId, periodKey) {
+  if (db[brandId]?.[periodKey]) return { pk: periodKey, fallback: false };
+  const months = Object.keys(db[brandId] || {}).filter(m => !m.startsWith("anual-")).sort();
+  if (months.length === 0) return { pk: periodKey, fallback: false };
+  // Pega o mês mais recente que seja <= ao pedido (ou o último disponível)
+  const candidates = months.filter(m => m <= periodKey);
+  const pk = candidates.length ? candidates[candidates.length - 1] : months[months.length - 1];
+  return { pk, fallback: pk !== periodKey };
+}
+
 function getKpis(brandId, periodKey) {
-  const d = db[brandId]?.[periodKey];
-  if (!d) return [{ k: "Sem dados", v: "—", p: "", u: true, noArrow: true }];
-  const prevIdx = allPeriods.indexOf(periodKey) - 1;
+  const resolved = resolveBrandPeriod(brandId, periodKey);
+  const d = db[brandId]?.[resolved.pk];
+  if (!d) return [{ k: "Sem dados", v: "—", p: "", u: true, noArrow: true, _fallback: false }];
+  const effectivePk = resolved.pk;
+  const prevIdx = allPeriods.indexOf(effectivePk) - 1;
   const prevKey = prevIdx >= 0 ? allPeriods[prevIdx] : null;
   const prev = prevKey ? db[brandId]?.[prevKey] : null;
   const pct = (cur, old) => old && cur ? (((cur - old) / old) * 100).toFixed(1) : null;
   const fmtPct = v => v ? (v > 0 ? `+${v}%` : `${v}%`) : "";
   // Vila do Morro: mostrar KPIs de ADS
+  const _fb = resolved.fallback ? { _fallback: true, _fallbackPeriod: effectivePk } : {};
   if (d.inv > 0 && !d.seg && !d.alc) {
     return [
-      { k: "Investimento", v: `R$ ${fmt(d.inv)}`, p: fmtPct(pct(d.inv, prev?.inv)), u: d.inv < (prev?.inv || Infinity) },
+      { k: "Investimento", v: `R$ ${fmt(d.inv)}`, p: fmtPct(pct(d.inv, prev?.inv)), u: d.inv < (prev?.inv || Infinity), ..._fb },
       { k: "Meta Ads", v: `R$ ${fmt(d.invMeta)}`, p: "", u: true, noArrow: true },
       { k: "Google Ads", v: `R$ ${fmt(d.invGoogle)}`, p: "", u: true, noArrow: true },
       { k: "Mensagens", v: d.msgs?.toLocaleString("pt-BR") || "—", p: fmtPct(pct(d.msgs, prev?.msgs)), u: d.msgs > (prev?.msgs || 0) },
     ];
   }
   return [
-    { k: "Seguidores", v: d.seg ? d.seg.toLocaleString("pt-BR") : "—", p: fmtPct(pct(d.seg, prev?.seg)), u: d.seg > (prev?.seg || 0) },
+    { k: "Seguidores", v: d.seg ? d.seg.toLocaleString("pt-BR") : "—", p: fmtPct(pct(d.seg, prev?.seg)), u: d.seg > (prev?.seg || 0), ..._fb },
     { k: "Alcance", v: fmt(d.alc), p: fmtPct(pct(d.alc, prev?.alc)), u: d.alc > (prev?.alc || 0) },
     { k: "Visualizações", v: fmt(d.views), p: fmtPct(pct(d.views, prev?.views)), u: d.views > (prev?.views || 0) },
     ...(d.inv > 0 ? [{ k: "Investimento", v: `R$ ${fmt(d.inv)}`, p: fmtPct(pct(d.inv, prev?.inv)), u: false, noArrow: !prev?.inv }] : [{ k: "Interações", v: fmt(d.inter), p: fmtPct(pct(d.inter, prev?.inter)), u: d.inter > (prev?.inter || 0) }]),
@@ -1179,7 +1193,13 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
               function buildConclusion(bid, pk) {
                 const d = db[bid]?.[pk];
                 const bn = brands.find(b=>b.id===bid)?.name || bid;
-                if (!d) return { title: `Sem dados para ${bn} em ${pl}.`, body: ["Nenhum relatório disponível para este período."] };
+                if (!d) {
+                  // Fallback: tenta mês mais recente
+                  const rr = resolveBrandPeriod(brand, period);
+                  const dd = db[brand]?.[rr.pk];
+                  if (!dd) return { title: `Sem dados para ${bn} em ${pl}.`, body: ["Nenhum relatório disponível para este período."] };
+                  return { title: `Aguardando relatório de ${pl} — exibindo ${periodLabels[rr.pk] || rr.pk}.`, body: [`Seguidores: ${(dd.seg||0).toLocaleString("pt-BR")} · Alcance: ${(dd.alc||0).toLocaleString("pt-BR")} · Investimento: R$ ${fmt(dd.inv||0)}.`] };
+                }
                 const prevIdx = allPeriods.indexOf(pk) - 1;
                 const prev = prevIdx >= 0 ? db[bid]?.[allPeriods[prevIdx]] : null;
                 const lines = [];
