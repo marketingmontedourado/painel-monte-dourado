@@ -1,14 +1,13 @@
-// Vercel Serverless Function — Puxa dados ORGÂNICOS do Instagram via Graph API
-// Versão 4 — corrige erro #100 movendo profile_views pra metric_type=total_value
+// Vercel Serverless Function — Dados ORGÂNICOS do Instagram via Graph API
+// Versão 5 — inclui posts/reels mais recentes com métricas individuais (otimizado pra timeout)
 //
-// Env vars necessárias: META_ACCESS_TOKEN
+// Env vars: META_ACCESS_TOKEN
 //
-// Query params (opcionais):
+// Query params:
 //   ig_user_id=...        → filtra por uma conta específica do IG
 //   days=28               → janela de insights (default: 28, max: 90)
-//   include_media=1       → também retorna mídia recente com insights individuais
-//
-// Retorna JSON: { success, accounts: [...com seguidores, insights, media opcional] }
+//   media_limit=12        → quantos posts/reels recentes retornar (default: 12, max: 25)
+//   skip_media=1          → desativa busca de mídia (mais rápido)
 
 const META_API_VERSION = "v22.0";
 const GRAPH_URL = `https://graph.facebook.com/${META_API_VERSION}`;
@@ -25,10 +24,10 @@ export default async function handler(req, res) {
 
   const filterIg = req.query.ig_user_id || null;
   const days = Math.min(Math.max(parseInt(req.query.days || "28", 10), 1), 90);
-  const includeMedia = req.query.include_media === "1";
+  const mediaLimit = Math.min(Math.max(parseInt(req.query.media_limit || "12", 10), 0), 25);
+  const skipMedia = req.query.skip_media === "1";
 
   try {
-    // 1) Lista Páginas do Facebook acessíveis pelo token
     const pages = await metaFetch(`${GRAPH_URL}/me/accounts`, {
       fields: "id,name,instagram_business_account",
       access_token: token,
@@ -37,20 +36,17 @@ export default async function handler(req, res) {
 
     const pageList = (pages.data || []).filter(p => p.instagram_business_account?.id && (!filterIg || p.instagram_business_account.id === filterIg));
 
-    // 2) Para cada IG conta, busca em PARALELO: info básica + insights
     const accounts = await Promise.all(pageList.map(async (page) => {
       const igId = page.instagram_business_account.id;
       const since = Math.floor((Date.now() - days * 86400 * 1000) / 1000);
       const until = Math.floor(Date.now() / 1000);
 
-      // Paralelo: info + 2 chamadas de insights (separadas pelo tipo de métrica que a Meta exige)
-      const [infoRes, dailyRes, totalRes] = await Promise.allSettled([
+      // PARALELO: info + insights (daily + total) + media (opcional)
+      const tasks = [
         metaFetch(`${GRAPH_URL}/${igId}`, {
           fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
           access_token: token,
         }),
-        // Métricas com period=day SEM metric_type (retornam série temporal direto)
-        // Importante: profile_views NÃO entra aqui (Meta v22 exige total_value pra ela)
         metaFetch(`${GRAPH_URL}/${igId}/insights`, {
           metric: "reach,follower_count",
           period: "day",
@@ -58,8 +54,6 @@ export default async function handler(req, res) {
           until,
           access_token: token,
         }),
-        // Métricas com metric_type=total_value (retornam valor agregado do período)
-        // profile_views entra aqui agora
         metaFetch(`${GRAPH_URL}/${igId}/insights`, {
           metric: "views,accounts_engaged,total_interactions,profile_views",
           metric_type: "total_value",
@@ -68,7 +62,17 @@ export default async function handler(req, res) {
           until,
           access_token: token,
         }),
-      ]);
+      ];
+      if (!skipMedia && mediaLimit > 0) {
+        tasks.push(metaFetch(`${GRAPH_URL}/${igId}/media`, {
+          fields: "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count",
+          access_token: token,
+          limit: mediaLimit,
+        }));
+      }
+
+      const results = await Promise.allSettled(tasks);
+      const [infoRes, dailyRes, totalRes, mediaRes] = results;
 
       const info = infoRes.status === "fulfilled" ? infoRes.value : {};
       const summary = {};
@@ -94,7 +98,31 @@ export default async function handler(req, res) {
         errors.total_value = totalRes.reason?.message;
       }
 
-      const account = {
+      // Mídia recente: busca insights individuais em paralelo (limite 12 = 12 requests paralelos)
+      let media = [];
+      if (mediaRes && mediaRes.status === "fulfilled") {
+        const mediaItems = mediaRes.value.data || [];
+        const enriched = await Promise.all(mediaItems.map(async (m) => {
+          const metrics = mediaMetricsByType(m.media_type, m.media_product_type);
+          if (!metrics) return m;
+          try {
+            const insightRes = await metaFetch(`${GRAPH_URL}/${m.id}/insights`, {
+              metric: metrics.join(","),
+              access_token: token,
+            });
+            const map = {};
+            (insightRes.data || []).forEach(x => { map[x.name] = x.values?.[0]?.value || x.total_value?.value || 0; });
+            return { ...m, insights: map };
+          } catch (e) {
+            return { ...m, insights_error: e.message };
+          }
+        }));
+        media = enriched;
+      } else if (mediaRes && mediaRes.status === "rejected") {
+        errors.media = mediaRes.reason?.message;
+      }
+
+      return {
         ig_user_id: info.id || igId,
         username: info.username,
         name: info.name,
@@ -108,24 +136,9 @@ export default async function handler(req, res) {
         period_days: days,
         insights_summary: summary,
         insights_series: series,
+        media,
         insights_errors: Object.keys(errors).length ? errors : undefined,
       };
-
-      // 3) Opcional: mídia recente
-      if (includeMedia) {
-        try {
-          const m = await metaFetch(`${GRAPH_URL}/${igId}/media`, {
-            fields: "id,caption,media_type,media_product_type,permalink,thumbnail_url,timestamp,like_count,comments_count",
-            access_token: token,
-            limit: 20,
-          });
-          account.media = m.data || [];
-        } catch (e) {
-          account.media_error = e.message;
-        }
-      }
-
-      return account;
     }));
 
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
@@ -139,7 +152,15 @@ export default async function handler(req, res) {
   }
 }
 
-// ----- Helpers -----
+function mediaMetricsByType(mediaType, productType) {
+  if (productType === "REELS") {
+    return ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"];
+  }
+  if (mediaType === "VIDEO" || mediaType === "CAROUSEL_ALBUM" || mediaType === "IMAGE") {
+    return ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"];
+  }
+  return null;
+}
 
 async function metaFetch(url, params) {
   const qs = new URLSearchParams(params).toString();
