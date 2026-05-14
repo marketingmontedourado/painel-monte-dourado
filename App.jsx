@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
-import { Sun, Moon, Lock, Menu, ChevronDown, Mountain, Building2, CalendarDays, Instagram, Music2, Youtube, Home, TreePine, Globe, TrendingUp, Eye, Users, MessageCircle, DollarSign, BarChart3 } from "lucide-react";
+import { Sun, Moon, Lock, Menu, ChevronDown, Mountain, Building2, CalendarDays, Instagram, Music2, Youtube, Home, TreePine, Globe, TrendingUp, TrendingDown, Eye, Users, MessageCircle, DollarSign, BarChart3 } from "lucide-react";
 
 
 const FONT_CSS = `
@@ -543,8 +543,9 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
   }
 
   let avgEngagement = null;
+  let engagementTrend = null;
   if (orgAccount?.media?.length) {
-    const mediaWithInsights = orgAccount.media.filter(m => m.insights);
+    const mediaWithInsights = orgAccount.media.filter(m => m.insights && m.timestamp);
     if (mediaWithInsights.length) {
       const sumReach = mediaWithInsights.reduce((s, m) => s + (m.insights.reach || 0), 0);
       const sumInter = mediaWithInsights.reduce((s, m) => s + ((m.insights.likes || 0) + (m.insights.comments || 0) + (m.insights.shares || 0) + (m.insights.saved || 0)), 0);
@@ -553,6 +554,22 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
         interactions: Math.round(sumInter / mediaWithInsights.length),
         rate: sumReach > 0 ? (sumInter / sumReach) * 100 : 0,
       };
+
+      // Tendência engajamento: posts ordenados por timestamp, dividir em metades
+      const sortedMedia = [...mediaWithInsights].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const halfM = Math.floor(sortedMedia.length / 2);
+      if (halfM > 0) {
+        const h1 = sortedMedia.slice(0, halfM);
+        const h2 = sortedMedia.slice(halfM);
+        const rate = (arr) => {
+          const r = arr.reduce((s, m) => s + (m.insights.reach || 0), 0);
+          const i = arr.reduce((s, m) => s + ((m.insights.likes || 0) + (m.insights.comments || 0) + (m.insights.shares || 0) + (m.insights.saved || 0)), 0);
+          return r > 0 ? (i / r) * 100 : 0;
+        };
+        const r1 = rate(h1);
+        const r2 = rate(h2);
+        if (r1 > 0) engagementTrend = ((r2 - r1) / r1) * 100;
+      }
     }
   }
 
@@ -565,6 +582,31 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
     return `${map[m] || m} ${y.slice(2)}`;
   };
   const fmtPct = (v) => v == null ? "" : (v > 0 ? `+${v.toFixed(1)}%` : `${v.toFixed(1)}%`);
+
+  // Helper pra render seta + variação com Lucide icon
+  const renderTrend = (variation, suffix = "%") => {
+    if (variation == null || variation === 0) return null;
+    const up = variation > 0;
+    const Icon = up ? TrendingUp : TrendingDown;
+    const color = up ? C.up : C.down;
+    return <span style={{ fontSize: 11, fontWeight: 600, color, fontFamily: "'Gotham',sans-serif", display: "inline-flex", alignItems: "center", gap: 3 }}>
+      <Icon size={12} strokeWidth={2.5} />
+      {up ? "+" : ""}{variation.toFixed(1)}{suffix}
+    </span>;
+  };
+
+  const renderDelta = (delta, total) => {
+    if (delta == null || delta === 0) return null;
+    const up = delta > 0;
+    const Icon = up ? TrendingUp : TrendingDown;
+    const color = up ? C.up : C.down;
+    const pct = total > 0 ? (delta / (total - delta)) * 100 : null;
+    return <span style={{ fontSize: 11, fontWeight: 600, color, fontFamily: "'Gotham',sans-serif", display: "inline-flex", alignItems: "center", gap: 3 }}>
+      <Icon size={12} strokeWidth={2.5} />
+      {up ? "+" : ""}{Math.abs(delta).toLocaleString("pt-BR")}
+      {pct != null && ` (${pct > 0 ? "+" : ""}${pct.toFixed(1)}%)`}
+    </span>;
+  };
 
   const card = { background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: mob ? "16px 14px" : "20px 18px" };
   const lab = { fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Marisa',serif" };
@@ -606,44 +648,44 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : avgEngagement ? "repeat(5, 1fr)" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "1px 0" }}>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Seguidores</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
               <span style={val}>{fmtN(orgAccount.followers_count)}</span>
-              {followersDelta != null && followersDelta !== 0 && (
-                <span style={{ fontSize: 11, fontWeight: 600, color: followersDelta > 0 ? C.up : C.down, fontFamily: "'Gotham',sans-serif" }}>
-                  {followersDelta > 0 ? "▲" : "▼"} {Math.abs(followersDelta)}
-                  {followersDeltaPct != null && ` (${followersDeltaPct > 0 ? "+" : ""}${followersDeltaPct.toFixed(1)}%)`}
-                </span>
-              )}
+              {renderDelta(followersDelta, orgAccount.followers_count)}
             </div>
             <div style={sec}>{orgAccount.media_count} posts · 28d</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Alcance 30d</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
               <span style={val}>{fmtN(orgAccount.insights_summary?.reach)}</span>
-              {reachTrend != null && (
-                <span style={{ fontSize: 11, fontWeight: 600, color: reachTrend > 0 ? C.up : C.down, fontFamily: "'Gotham',sans-serif" }}>
-                  {reachTrend > 0 ? "▲" : "▼"} {reachTrend > 0 ? "+" : ""}{reachTrend.toFixed(1)}%
-                </span>
-              )}
+              {renderTrend(reachTrend)}
             </div>
-            <div style={sec}>{reachTrend != null ? "2ª metade vs 1ª metade" : "contas únicas"}</div>
+            <div style={sec}>{reachTrend != null ? "2ª quinzena vs 1ª" : "contas únicas"}</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Visualizações 30d</div>
-            <div style={val}>{fmtN(orgAccount.insights_summary?.views)}</div>
-            <div style={sec}>conteúdo total</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <span style={val}>{fmtN(orgAccount.insights_summary?.views)}</span>
+              {renderTrend(reachTrend)}
+            </div>
+            <div style={sec}>conteúdo total · tendência</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Interações 30d</div>
-            <div style={val}>{fmtN(orgAccount.insights_summary?.total_interactions)}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <span style={val}>{fmtN(orgAccount.insights_summary?.total_interactions)}</span>
+              {renderTrend(reachTrend)}
+            </div>
             <div style={sec}>likes+coments+shares</div>
           </div>
           {avgEngagement && (
             <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
               <div style={lab}>Engajamento/post</div>
-              <div style={val}>{avgEngagement.rate.toFixed(1)}%</div>
-              <div style={sec}>{fmtN(avgEngagement.interactions)} médio</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                <span style={val}>{avgEngagement.rate.toFixed(1)}%</span>
+                {renderTrend(engagementTrend)}
+              </div>
+              <div style={sec}>{fmtN(avgEngagement.interactions)} médio · {engagementTrend != null ? "vs 1ª metade" : "por post"}</div>
             </div>
           )}
         </div>
@@ -657,7 +699,7 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
                 <XAxis dataKey="date" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} width={36} />
-                <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: "#0d1525", border: "1px solid rgba(196,167,108,0.3)", borderRadius: 8, color: "#F5F0E4", fontSize: 12 }} labelStyle={{ color: "#C4A76C" }} itemStyle={{ color: "#F5F0E4" }} />
                 <Area type="monotone" dataKey="value" stroke={brand.color} strokeWidth={2} fill={`url(#seg-${brandId})`} />
               </AreaChart>
             </ResponsiveContainer>
@@ -754,7 +796,7 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
                 <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 25} />
                 <YAxis yAxisId="L" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={44} />
                 <YAxis yAxisId="R" orientation="right" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={36} />
-                <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 }} formatter={(v, name) => [name === "spend" ? `R$ ${v.toLocaleString("pt-BR")}` : v.toLocaleString("pt-BR"), name === "spend" ? "Investido" : "Mensagens"]} />
+                <Tooltip contentStyle={{ background: "#0d1525", border: "1px solid rgba(196,167,108,0.3)", borderRadius: 8, color: "#F5F0E4", fontSize: 12 }} labelStyle={{ color: "#C4A76C" }} itemStyle={{ color: "#F5F0E4" }} formatter={(v, name) => [name === "spend" ? `R$ ${v.toLocaleString("pt-BR")}` : v.toLocaleString("pt-BR"), name === "spend" ? "Investido" : "Mensagens"]} />
                 <Bar yAxisId="L" dataKey="spend" fill={brand.color} radius={[4, 4, 0, 0]} maxBarSize={30} />
                 <Bar yAxisId="R" dataKey="msgs" fill="#7A9BBF" radius={[4, 4, 0, 0]} maxBarSize={30} />
               </BarChart>
