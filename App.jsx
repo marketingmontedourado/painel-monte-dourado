@@ -464,6 +464,23 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
   const brand = brands.find(b => b.id === brandId);
   if (!brand) return null;
 
+  const [expandedCampaign, setExpandedCampaign] = useState(null);
+
+  // Filtra criativos dos ads ATIVOS dessa marca (via taxonomia de campanha)
+  const adsCreatives = (liveData?.creatives?.ads || []).filter(ad => {
+    // Acha o nome da campanha dele
+    const c = (liveData?.ads?.data || []).find(r => r.campaign_id === ad.campaign_id);
+    const campName = c?.campaign_name;
+    return campName && brandFromCampaign(campName) === brandId;
+  });
+
+  // Agrupa criativos por campaign_id
+  const creativesByCampaign = {};
+  adsCreatives.forEach(ad => {
+    if (!creativesByCampaign[ad.campaign_id]) creativesByCampaign[ad.campaign_id] = [];
+    creativesByCampaign[ad.campaign_id].push(ad);
+  });
+
   const orgAccount = (liveData?.organic?.accounts || []).find(a => usernameToBrand[a.username] === brandId);
   const adsForBrand = (liveData?.ads?.data || []).filter(c => brandFromCampaign(c.campaign_name) === brandId);
 
@@ -811,21 +828,62 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
         {topCampaigns.length > 0 && (
           <div style={{ padding: mob ? "8px 14px 16px" : "10px 18px 20px" }}>
             <div style={{ ...lab, marginBottom: 10 }}>Campanhas ({topCampaigns.length})</div>
-            <div style={{ maxHeight: 320, overflowY: "auto" }}>
-              {topCampaigns.map((c, i) => (
-                <div key={c.id} style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 100px 90px 90px", gap: 8, padding: "10px 0", borderBottom: i === topCampaigns.length - 1 ? "none" : `1px solid ${C.glassBd}`, fontSize: 12, alignItems: "center" }}>
-                  <div>
-                    <div style={{ color: C.text, fontWeight: 500, fontSize: 12, marginBottom: 2 }}>{c.name}</div>
-                    <div style={{ color: C.mut, fontSize: 9, letterSpacing: "0.04em" }}>
-                      <span style={{ padding: "2px 6px", borderRadius: 3, background: (c.status === "ACTIVE" ? C.up : C.mut) + "22", color: c.status === "ACTIVE" ? C.up : C.mut, fontSize: 9, marginRight: 6, textTransform: "uppercase" }}>{c.status || "—"}</span>
-                      {c.objective || "—"} · {c.months_count} {c.months_count === 1 ? "mês" : "meses"}
+            <div style={{ maxHeight: 500, overflowY: "auto" }}>
+              {topCampaigns.map((c, i) => {
+                const ads = creativesByCampaign[c.id] || [];
+                const hasCreatives = ads.length > 0;
+                const isExpanded = expandedCampaign === c.id;
+                return (
+                  <div key={c.id} style={{ borderBottom: i === topCampaigns.length - 1 && !isExpanded ? "none" : `1px solid ${C.glassBd}` }}>
+                    <div onClick={() => hasCreatives && setExpandedCampaign(isExpanded ? null : c.id)} style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 100px 90px 90px 24px", gap: 8, padding: "10px 0", fontSize: 12, alignItems: "center", cursor: hasCreatives ? "pointer" : "default", transition: "background 0.15s" }} onMouseEnter={e => hasCreatives && (e.currentTarget.style.background = "rgba(255,255,255,0.02)")} onMouseLeave={e => hasCreatives && (e.currentTarget.style.background = "transparent")}>
+                      <div>
+                        <div style={{ color: C.text, fontWeight: 500, fontSize: 12, marginBottom: 2 }}>{c.name}</div>
+                        <div style={{ color: C.mut, fontSize: 9, letterSpacing: "0.04em" }}>
+                          <span style={{ padding: "2px 6px", borderRadius: 3, background: (c.status === "ACTIVE" ? C.up : C.mut) + "22", color: c.status === "ACTIVE" ? C.up : C.mut, fontSize: 9, marginRight: 6, textTransform: "uppercase" }}>{c.status || "—"}</span>
+                          {c.objective || "—"} · {c.months_count} {c.months_count === 1 ? "mês" : "meses"}
+                          {hasCreatives && <span style={{ marginLeft: 6, color: brand.color }}>· {ads.length} {ads.length === 1 ? "criativo" : "criativos"}</span>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: mob ? "left" : "right", color: brand.color, fontWeight: 500, fontFamily: "'Marisa',serif", fontSize: 13 }}>{fmtBRL(c.spend)}</div>
+                      <div style={{ textAlign: mob ? "left" : "right", color: C.sec }}>{fmtN(c.reach)} alc.</div>
+                      <div style={{ textAlign: mob ? "left" : "right", color: C.text }}>{fmtN(c.msgs)} msgs</div>
+                      {!mob && <div style={{ textAlign: "center", color: hasCreatives ? C.dourado : "transparent", fontSize: 14, transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}><ChevronDown size={14} strokeWidth={2} /></div>}
                     </div>
+                    {isExpanded && ads.length > 0 && (
+                      <div style={{ padding: "12px 0 16px", background: "rgba(0,0,0,0.15)", margin: "0 -12px", paddingLeft: 12, paddingRight: 12, borderTop: `1px solid ${C.glassBd}` }}>
+                        <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 10 }}>Criativos ativos ({ads.length})</div>
+                        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
+                          {ads.map(ad => {
+                            const cr = ad.creative || {};
+                            const ins = ad.insights_30d || {};
+                            const link = cr.instagram_permalink_url || (cr.effective_object_story_id ? `https://facebook.com/${cr.effective_object_story_id}` : null);
+                            const Wrapper = link ? "a" : "div";
+                            const wrapperProps = link ? { href: link, target: "_blank", rel: "noreferrer" } : {};
+                            return (
+                              <Wrapper key={ad.id} {...wrapperProps} style={{ textDecoration: "none", color: "inherit" }}>
+                                <div style={{ background: C.bg, border: `1px solid ${C.glassBd}`, borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column", transition: "border 0.15s" }} onMouseEnter={e => link && (e.currentTarget.style.borderColor = brand.color + "80")} onMouseLeave={e => (e.currentTarget.style.borderColor = C.glassBd)}>
+                                  <div style={{ aspectRatio: "1", background: cr.thumbnail_url ? `url(${cr.thumbnail_url}) center/cover` : C.glassBd, position: "relative" }}>
+                                    {cr.video_id && <div style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "2px 6px", borderRadius: 3, fontSize: 8, letterSpacing: "0.08em", fontFamily: "'Gotham',sans-serif" }}>VÍDEO</div>}
+                                    <div style={{ position: "absolute", bottom: 6, left: 6, background: (ad.effective_status === "ACTIVE" ? C.up : C.mut) + "DD", color: "#fff", padding: "2px 6px", borderRadius: 3, fontSize: 8, letterSpacing: "0.06em", fontFamily: "'Gotham',sans-serif", textTransform: "uppercase" }}>{ad.effective_status}</div>
+                                  </div>
+                                  <div style={{ padding: "8px 10px" }}>
+                                    <div style={{ fontSize: 10, color: C.text, fontWeight: 500, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={ad.name}>{ad.name}</div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>
+                                      <span>R$ {ins.spend.toFixed(0)}</span>
+                                      <span>{fmtN(ins.reach)} alc</span>
+                                      <span>{fmtN(ins.messages)} msgs</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </Wrapper>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{ textAlign: mob ? "left" : "right", color: brand.color, fontWeight: 500, fontFamily: "'Marisa',serif", fontSize: 13 }}>{fmtBRL(c.spend)}</div>
-                  <div style={{ textAlign: mob ? "left" : "right", color: C.sec }}>{fmtN(c.reach)} alc.</div>
-                  <div style={{ textAlign: mob ? "left" : "right", color: C.text }}>{fmtN(c.msgs)} msgs</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -916,11 +974,12 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
     Promise.all([
       fetch("/api/meta-ads").then(r => r.json()).catch(e => ({ success: false, error: e?.message })),
       fetch("/api/meta-organic").then(r => r.json()).catch(e => ({ success: false, error: e?.message })),
-    ]).then(([adsResp, orgResp]) => {
+      fetch("/api/meta-ads-creatives").then(r => r.json()).catch(e => ({ success: false, error: e?.message })),
+    ]).then(([adsResp, orgResp, creativesResp]) => {
       if (cancelled) return;
       try {
         applyMetaOverlay(adsResp, orgResp);
-        setLiveData({ ads: adsResp, organic: orgResp });
+        setLiveData({ ads: adsResp, organic: orgResp, creatives: creativesResp });
         setLiveSyncAt(new Date());
         if (!adsResp?.success && !orgResp?.success) {
           setLiveError(adsResp?.error || orgResp?.error || "Erro desconhecido");
