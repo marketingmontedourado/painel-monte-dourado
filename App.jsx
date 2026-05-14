@@ -94,15 +94,21 @@ const usernameToBrand = {
 const _dbSnapshot = JSON.parse(JSON.stringify(db));
 
 function applyMetaOverlay(adsResp, organicResp) {
-  // 1. Restaura db pro snapshot original
+  // 1. Restaura db pro snapshot original (limpa overlay anterior)
   Object.keys(db).forEach(brand => {
     Object.keys(db[brand] || {}).forEach(pk => { delete db[brand][pk]; });
     if (_dbSnapshot[brand]) {
       Object.keys(_dbSnapshot[brand]).forEach(pk => {
-        db[brand][pk] = { ..._dbSnapshot[brand][pk] };
+        db[brand][pk] = { ..._dbSnapshot[brand][pk], _monthState: "closed" };
       });
     }
   });
+
+  // Identifica mês corrente e progresso (ex: dia 14 de 31)
+  const today = new Date();
+  const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const currentDay = today.getDate();
+  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
 
   // 2. Aplica dados de ADS (Meta Marketing API)
   if (adsResp && adsResp.success && Array.isArray(adsResp.data)) {
@@ -126,17 +132,18 @@ function applyMetaOverlay(adsResp, organicResp) {
       if (!db[brand]) db[brand] = {};
       Object.keys(buffer[brand]).forEach(pk => {
         const live = buffer[brand][pk];
+        const isCurrentMonth = pk === currentMonth;
         if (!db[brand][pk]) {
-          // Mês novo da API que não existia hardcoded — cria entrada base
           db[brand][pk] = { seg: 0, alc: 0, org: 0, pago: 0, views: 0, inv: 0, inter: 0, vis: 0, posts: 0, reels: 0, stories: 0 };
+          // Mês novo: se for o corrente, "current"; senão, "awaiting" (passou e não tem relatório)
+          db[brand][pk]._monthState = isCurrentMonth ? "current" : "awaiting";
+          if (isCurrentMonth) db[brand][pk]._dayProgress = { current: currentDay, total: lastDayOfMonth };
         }
         const slot = db[brand][pk];
-        // Sobrescreve campos da Meta com valores ao vivo
+        // ADS: sempre aplica (Meta API dá breakdown mensal preciso)
         slot.invMeta = Math.round(live.spend);
-        // Recalcula investimento total (Meta + Google + Seg do hardcoded)
         slot.inv = Math.round(live.spend + (slot.invGoogle || 0) + (slot.invSeg || 0));
         slot.msgs = live.msgs;
-        // Atualiza alcance pago e total
         slot.pago = live.reach;
         slot.alc = (slot.org || 0) + live.reach;
         slot._live = true;
@@ -144,61 +151,56 @@ function applyMetaOverlay(adsResp, organicResp) {
     });
   }
 
-  // 3. Aplica dados ORGÂNICOS — agrega série diária por mês + distribui totais proporcionalmente
+  // 3. ORGÂNICO — aplica APENAS no MÊS CORRENTE (Meta API só dá janela móvel 28d sem breakdown mensal preciso)
+  //    Para meses passados, mantemos o hardcoded ou marcamos como "awaiting"
   if (organicResp && organicResp.success && Array.isArray(organicResp.accounts)) {
     organicResp.accounts.forEach(acc => {
       const brand = usernameToBrand[acc.username];
       if (!brand) return;
       if (!db[brand]) db[brand] = {};
 
-      // Série diária de reach é a base — vem dos últimos 28 dias
-      const reachByMonth = aggregateSeriesByMonth(acc.insights_series?.reach);
-      const followerDeltaByMonth = aggregateSeriesByMonth(acc.insights_series?.follower_count);
-      const summary = acc.insights_summary || {};
-
-      // Total de reach no período (soma dos meses) — usado pra distribuir proporcionalmente
-      const totalReach = Object.values(reachByMonth).reduce((s, v) => s + v, 0);
-
-      // Garante entradas para os meses cobertos
-      const allMonths = new Set([
-        ...Object.keys(reachByMonth),
-        ...Object.keys(followerDeltaByMonth),
-      ]);
-      allMonths.forEach(pk => {
-        if (!db[brand][pk]) {
-          db[brand][pk] = { seg: 0, alc: 0, org: 0, pago: 0, views: 0, inv: 0, inter: 0, vis: 0, posts: 0, reels: 0, stories: 0 };
-        }
-        const slot = db[brand][pk];
-        if (reachByMonth[pk] != null) {
-          slot.org = reachByMonth[pk];
-          slot.alc = slot.org + (slot.pago || 0);
-        }
-        // Distribuição proporcional ao reach: views, profile_views (vis) e total_interactions
-        const ratio = totalReach > 0 ? (reachByMonth[pk] || 0) / totalReach : 0;
-        if (summary.profile_views != null) slot.vis = Math.round(summary.profile_views * ratio);
-        if (summary.views != null) slot.views = Math.round(summary.views * ratio);
-        if (summary.total_interactions != null) slot.inter = Math.round(summary.total_interactions * ratio);
-        slot._live = true;
-      });
-
-      // Atualiza seguidores: aplica em TODOS os meses criados pelo overlay (que representam "agora")
-      // E no mês mais recente do hardcoded também, pra manter o KPI Atualizado
-      if (acc.followers_count != null) {
-        // Em todos os meses criados pelo overlay
-        allMonths.forEach(pk => {
-          if (db[brand][pk]) {
-            db[brand][pk].seg = acc.followers_count;
-            db[brand][pk]._live = true;
-          }
-        });
-        // No mês mais recente da brand (garante atualização do último hardcoded também)
-        const monthsSorted = Object.keys(db[brand]).sort();
-        if (monthsSorted.length > 0) {
-          const latestMonth = monthsSorted[monthsSorted.length - 1];
-          db[brand][latestMonth].seg = acc.followers_count;
-          db[brand][latestMonth]._live = true;
-        }
+      // Cria entrada do mês corrente se ainda não existe
+      if (!db[brand][currentMonth]) {
+        db[brand][currentMonth] = { seg: 0, alc: 0, org: 0, pago: 0, views: 0, inv: 0, inter: 0, vis: 0, posts: 0, reels: 0, stories: 0 };
       }
+      db[brand][currentMonth]._monthState = "current";
+      db[brand][currentMonth]._dayProgress = { current: currentDay, total: lastDayOfMonth };
+      db[brand][currentMonth]._live = true;
+
+      const slot = db[brand][currentMonth];
+
+      // Soma reach diário APENAS dos dias do mês corrente
+      const reachSeries = acc.insights_series?.reach || [];
+      const reachCurrent = reachSeries
+        .filter(d => d.date && d.date.startsWith(currentMonth))
+        .reduce((s, d) => s + (d.value || 0), 0);
+
+      // Soma reach total da série (28 dias)
+      const totalReach28 = reachSeries.reduce((s, d) => s + (d.value || 0), 0);
+
+      // Ratio: quanto do reach total é do mês corrente
+      const ratio = totalReach28 > 0 ? reachCurrent / totalReach28 : 1;
+
+      slot.org = reachCurrent;
+      slot.alc = slot.org + (slot.pago || 0);
+
+      // Distribui os totais (summary 28d) proporcionalmente ao mês corrente
+      const summary = acc.insights_summary || {};
+      if (summary.profile_views != null) slot.vis = Math.round(summary.profile_views * ratio);
+      if (summary.views != null) slot.views = Math.round(summary.views * ratio);
+      if (summary.total_interactions != null) slot.inter = Math.round(summary.total_interactions * ratio);
+
+      // Seguidores ATUAL — sempre do dia
+      if (acc.followers_count != null) slot.seg = acc.followers_count;
+
+      // Identifica meses passados sem relatório fechado (entre último hardcoded e mês corrente)
+      // e marca como "awaiting" se ainda não foram marcados
+      const monthsSorted = Object.keys(db[brand]).sort();
+      monthsSorted.forEach(pk => {
+        if (pk >= currentMonth) return; // pula o atual e futuros
+        const s = db[brand][pk];
+        if (s && !s._monthState) s._monthState = "closed";
+      });
     });
   }
 }
@@ -289,9 +291,19 @@ function resolveBrandPeriod(brandId, periodKey) {
 }
 
 function getKpis(brandId, periodKey) {
+  // Verifica estado do mês solicitado ANTES do fallback
+  const dDirect = db[brandId]?.[periodKey];
+  const today = new Date();
+  const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+
+  // Se o mês pedido é PASSADO e não tem dados, é "awaiting" (aguardando relatório)
+  if (!dDirect && periodKey < currentMonth) {
+    return [{ k: "Aguardando relatório", v: "—", p: `Período: ${periodLabels[periodKey] || periodKey}`, u: true, noArrow: true, _state: "awaiting" }];
+  }
+
   const resolved = resolveBrandPeriod(brandId, periodKey);
   const d = db[brandId]?.[resolved.pk];
-  if (!d) return [{ k: "Sem dados", v: "—", p: "", u: true, noArrow: true, _fallback: false }];
+  if (!d) return [{ k: "Sem dados", v: "—", p: "", u: true, noArrow: true }];
   const effectivePk = resolved.pk;
   const prevIdx = allPeriods.indexOf(effectivePk) - 1;
   const prevKey = prevIdx >= 0 ? allPeriods[prevIdx] : null;
@@ -299,7 +311,13 @@ function getKpis(brandId, periodKey) {
   const pct = (cur, old) => old && cur ? (((cur - old) / old) * 100).toFixed(1) : null;
   const fmtPct = v => v ? (v > 0 ? `+${v}%` : `${v}%`) : "";
   // Vila do Morro: mostrar KPIs de ADS
-  const _fb = resolved.fallback ? { _fallback: true, _fallbackPeriod: effectivePk } : {};
+  const _state = d._monthState || "closed";
+  const _progress = d._dayProgress || null;
+  const _fb = {
+    ...(resolved.fallback ? { _fallback: true, _fallbackPeriod: effectivePk } : {}),
+    _state,
+    ...(_progress ? { _progress } : {}),
+  };
   if (d.inv > 0 && !d.seg && !d.alc) {
     return [
       { k: "Investimento", v: `R$ ${fmt(d.inv)}`, p: fmtPct(pct(d.inv, prev?.inv)), u: d.inv < (prev?.inv || Infinity), ..._fb },
@@ -438,9 +456,265 @@ function MdSymbol({ color = "#89765A", size = 48 }) {
 /* ============================================================
    VISÃO DO SÓCIO — Redesign DashCortex
 ============================================================ */
+/* ============================================================
+   LIVE BRAND VIEW — renderiza uma marca usando exclusivamente dados da API
+   Estrutura: ORGÂNICO AO VIVO (últimos 30 dias) + HISTÓRICO DE ADS (mensal)
+============================================================ */
+function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
+  const brand = brands.find(b => b.id === brandId);
+  if (!brand) return null;
+
+  const orgAccount = (liveData?.organic?.accounts || []).find(a => usernameToBrand[a.username] === brandId);
+  const adsForBrand = (liveData?.ads?.data || []).filter(c => brandFromCampaign(c.campaign_name) === brandId);
+
+  // Agrupa ads por mês
+  const adsByMonth = {};
+  adsForBrand.forEach(row => {
+    const pk = row.month;
+    if (!pk) return;
+    if (!adsByMonth[pk]) adsByMonth[pk] = { month: pk, spend: 0, msgs: 0, reach: 0, clicks: 0, campaigns: 0 };
+    const b = adsByMonth[pk];
+    b.spend += row.spend || 0;
+    b.msgs += row.messages || 0;
+    b.reach += row.reach || 0;
+    b.clicks += row.clicks || 0;
+    b.campaigns++;
+  });
+  const monthsAds = Object.values(adsByMonth).sort((a, b) => a.month.localeCompare(b.month));
+
+  // Top campanhas por gasto agregado
+  const campaignAgg = {};
+  adsForBrand.forEach(row => {
+    const k = row.campaign_id;
+    if (!campaignAgg[k]) {
+      campaignAgg[k] = { id: row.campaign_id, name: row.campaign_name, status: row.campaign_status, objective: row.campaign_objective, spend: 0, msgs: 0, reach: 0, months: new Set() };
+    }
+    campaignAgg[k].spend += row.spend || 0;
+    campaignAgg[k].msgs += row.messages || 0;
+    campaignAgg[k].reach += row.reach || 0;
+    campaignAgg[k].months.add(row.month);
+  });
+  const topCampaigns = Object.values(campaignAgg)
+    .map(c => ({ ...c, months_count: c.months.size }))
+    .sort((a, b) => b.spend - a.spend);
+
+  const totalSpend = monthsAds.reduce((s, m) => s + m.spend, 0);
+  const totalMsgs = monthsAds.reduce((s, m) => s + m.msgs, 0);
+  const totalReach = monthsAds.reduce((s, m) => s + m.reach, 0);
+  const totalClicks = monthsAds.reduce((s, m) => s + m.clicks, 0);
+  const costPerMsg = totalMsgs > 0 ? totalSpend / totalMsgs : 0;
+
+  const fmtBRL = (n) => "R$ " + (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const fmtN = (n) => (n || 0).toLocaleString("pt-BR");
+  const fmtMonth = (pk) => {
+    const map = { "01":"Jan","02":"Fev","03":"Mar","04":"Abr","05":"Mai","06":"Jun","07":"Jul","08":"Ago","09":"Set","10":"Out","11":"Nov","12":"Dez" };
+    const [y, m] = pk.split("-");
+    return `${map[m] || m} ${y.slice(2)}`;
+  };
+
+  const card = { background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: mob ? "16px 14px" : "20px 18px" };
+  const lab = { fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Marisa',serif" };
+  const val = { fontSize: mob ? 22 : 26, fontWeight: 500, color: C.text, fontFamily: "'Marisa',serif", lineHeight: 1 };
+  const sec = { fontSize: 11, color: C.mut, marginTop: 4, fontFamily: "'Gotham',sans-serif" };
+
+  const isEmpty = !orgAccount && adsForBrand.length === 0;
+
+  return <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    {/* HEADER da marca */}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, paddingBottom: 12, borderBottom: `1px solid ${brand.color}40` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 6, height: 32, background: brand.color, borderRadius: 3 }} />
+        <div>
+          <div style={{ fontSize: mob ? 18 : 22, fontFamily: "'Marisa',serif", textTransform: "uppercase", letterSpacing: "0.06em", color: C.text }}>{brand.name}</div>
+          {orgAccount && <div style={{ fontSize: 11, color: C.mut, fontFamily: "'Gotham',sans-serif", marginTop: 2 }}>@{orgAccount.username}</div>}
+          {!orgAccount && brand.tag && <div style={{ fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif", marginTop: 2, letterSpacing: "0.06em", textTransform: "uppercase" }}>{brand.tag}</div>}
+        </div>
+      </div>
+      {liveData?.organic?.success || liveData?.ads?.success ? (
+        <div style={{ fontSize: 9, color: C.up, fontFamily: "'Marisa',serif", letterSpacing: "0.16em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.up, animation: "pulse 1.6s ease infinite" }} />
+          Ao vivo
+        </div>
+      ) : null}
+    </div>
+
+    {isEmpty && (
+      <div style={{ ...card, textAlign: "center", padding: "40px 20px" }}>
+        <div style={{ fontSize: 14, color: C.text, marginBottom: 6, fontFamily: "'Marisa',serif", textTransform: "uppercase", letterSpacing: "0.06em" }}>{brand.tag || "Marca em criação"}</div>
+        <div style={{ fontSize: 11, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Sem perfil Instagram vinculado e sem campanhas registradas ainda.</div>
+      </div>
+    )}
+
+    {/* SEÇÃO 1: ORGÂNICO AO VIVO */}
+    {orgAccount && (
+      <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: mob ? "14px 14px 0" : "18px 18px 0", display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>● Orgânico ao vivo</div>
+            <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>Últimos {orgAccount.period_days || 30} dias direto da Meta API</div>
+          </div>
+        </div>
+
+        {/* KPIs orgânicos */}
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "1px 0" }}>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Seguidores</div>
+            <div style={val}>{fmtN(orgAccount.followers_count)}</div>
+            <div style={sec}>{orgAccount.media_count} posts publicados</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Alcance 30d</div>
+            <div style={val}>{fmtN(orgAccount.insights_summary?.reach)}</div>
+            <div style={sec}>contas únicas</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Visualizações 30d</div>
+            <div style={val}>{fmtN(orgAccount.insights_summary?.views)}</div>
+            <div style={sec}>conteúdo total</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Interações 30d</div>
+            <div style={val}>{fmtN(orgAccount.insights_summary?.total_interactions)}</div>
+            <div style={sec}>likes + coments + shares</div>
+          </div>
+        </div>
+
+        {/* Gráfico de seguidores (variação diária) */}
+        {orgAccount.insights_series?.follower_count?.length > 0 && (
+          <div style={{ padding: mob ? "16px 12px 8px" : "18px 18px 10px" }}>
+            <div style={{ ...lab, marginBottom: 10 }}>Variação de seguidores (30 dias)</div>
+            <ResponsiveContainer width="100%" height={140}>
+              <AreaChart data={orgAccount.insights_series.follower_count.map(d => ({ date: d.date.slice(5), value: d.value }))}>
+                <defs>
+                  <linearGradient id={`seg-${brandId}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={brand.color} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={brand.color} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} width={36} />
+                <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 }} />
+                <Area type="monotone" dataKey="value" stroke={brand.color} strokeWidth={2} fill={`url(#seg-${brandId})`} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Posts/Reels recentes */}
+        {orgAccount.media?.length > 0 && (
+          <div style={{ padding: mob ? "8px 14px 16px" : "10px 18px 20px" }}>
+            <div style={{ ...lab, marginBottom: 12 }}>Últimos {orgAccount.media.length} posts e reels</div>
+            <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
+              {orgAccount.media.slice(0, 8).map(m => {
+                const ins = m.insights || {};
+                const isReel = m.media_product_type === "REELS";
+                return (
+                  <a key={m.id} href={m.permalink} target="_blank" rel="noreferrer" style={{ textDecoration: "none", color: "inherit" }}>
+                    <div style={{ background: C.bg, border: `1px solid ${C.glassBd}`, borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                      <div style={{ aspectRatio: "1", background: C.glassBd, backgroundImage: m.thumbnail_url || m.media_url ? `url(${m.thumbnail_url || m.media_url})` : "none", backgroundSize: "cover", backgroundPosition: "center", position: "relative" }}>
+                        {isReel && <div style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "2px 6px", borderRadius: 3, fontSize: 8, letterSpacing: "0.08em", fontFamily: "'Gotham',sans-serif" }}>REEL</div>}
+                      </div>
+                      <div style={{ padding: "8px 10px", display: "flex", justifyContent: "space-between", fontSize: 10, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>
+                        <span title="Alcance">👁 {fmtN(ins.reach || 0)}</span>
+                        <span title="Interações">♥ {fmtN((ins.likes || 0) + (ins.comments || 0))}</span>
+                      </div>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* SEÇÃO 2: HISTÓRICO DE ADS */}
+    {adsForBrand.length > 0 && (
+      <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: mob ? "14px 14px 0" : "18px 18px 0", display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>▣ Histórico de Ads</div>
+            <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>{monthsAds.length} {monthsAds.length === 1 ? "mês" : "meses"} · {topCampaigns.length} campanhas no total</div>
+          </div>
+          {liveData?.ads?.period && (
+            <div style={{ fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>
+              {fmtMonth(liveData.ads.period.since.slice(0,7))} → {fmtMonth(liveData.ads.period.until.slice(0,7))}
+            </div>
+          )}
+        </div>
+
+        {/* KPIs ads */}
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "1px 0" }}>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Investido total</div>
+            <div style={val}>{fmtBRL(totalSpend)}</div>
+            <div style={sec}>{monthsAds.length} meses</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Alcance pago</div>
+            <div style={val}>{fmtN(totalReach)}</div>
+            <div style={sec}>somatório</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Mensagens</div>
+            <div style={val}>{fmtN(totalMsgs)}</div>
+            <div style={sec}>conversas iniciadas</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Custo / mensagem</div>
+            <div style={val}>{totalMsgs > 0 ? `R$ ${costPerMsg.toFixed(2)}` : "—"}</div>
+            <div style={sec}>média geral</div>
+          </div>
+        </div>
+
+        {/* Gráfico mensal */}
+        {monthsAds.length > 0 && (
+          <div style={{ padding: mob ? "16px 12px 8px" : "18px 18px 10px" }}>
+            <div style={{ ...lab, marginBottom: 10 }}>Investimento mensal</div>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={monthsAds.map(m => ({ m: fmtMonth(m.month), spend: m.spend, msgs: m.msgs, reach: m.reach }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
+                <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 25} />
+                <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={44} />
+                <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 }} formatter={(v, name) => [name === "spend" ? `R$ ${v.toLocaleString("pt-BR")}` : v.toLocaleString("pt-BR"), name === "spend" ? "Investido" : name === "msgs" ? "Mensagens" : "Alcance"]} />
+                <Bar dataKey="spend" fill={brand.color} radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Top campanhas */}
+        {topCampaigns.length > 0 && (
+          <div style={{ padding: mob ? "8px 14px 16px" : "10px 18px 20px" }}>
+            <div style={{ ...lab, marginBottom: 10 }}>Campanhas ({topCampaigns.length})</div>
+            <div style={{ maxHeight: 320, overflowY: "auto" }}>
+              {topCampaigns.map((c, i) => (
+                <div key={c.id} style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 100px 90px 90px", gap: 8, padding: "10px 0", borderBottom: i === topCampaigns.length - 1 ? "none" : `1px solid ${C.glassBd}`, fontSize: 12, alignItems: "center" }}>
+                  <div>
+                    <div style={{ color: C.text, fontWeight: 500, fontSize: 12, marginBottom: 2 }}>{c.name}</div>
+                    <div style={{ color: C.mut, fontSize: 9, letterSpacing: "0.04em" }}>
+                      <span style={{ padding: "2px 6px", borderRadius: 3, background: (c.status === "ACTIVE" ? C.up : C.mut) + "22", color: c.status === "ACTIVE" ? C.up : C.mut, fontSize: 9, marginRight: 6, textTransform: "uppercase" }}>{c.status || "—"}</span>
+                      {c.objective || "—"} · {c.months_count} {c.months_count === 1 ? "mês" : "meses"}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: mob ? "left" : "right", color: brand.color, fontWeight: 500, fontFamily: "'Marisa',serif", fontSize: 13 }}>{fmtBRL(c.spend)}</div>
+                  <div style={{ textAlign: mob ? "left" : "right", color: C.sec }}>{fmtN(c.reach)} alc.</div>
+                  <div style={{ textAlign: mob ? "left" : "right", color: C.text }}>{fmtN(c.msgs)} msgs</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+  </div>;
+}
+
 function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   const [liveSyncAt, setLiveSyncAt] = useState(null);
   const [liveError, setLiveError] = useState(null);
+  const [liveData, setLiveData] = useState(null);
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -450,6 +724,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
       if (cancelled) return;
       try {
         applyMetaOverlay(adsResp, orgResp);
+        setLiveData({ ads: adsResp, organic: orgResp });
         setLiveSyncAt(new Date());
         if (!adsResp?.success && !orgResp?.success) {
           setLiveError(adsResp?.error || orgResp?.error || "Erro desconhecido");
@@ -537,15 +812,26 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
     const pctVal = Math.min(Math.abs(parseFloat(k.p)) || 0, 100);
     const barColor = k.u ? "#22c55e" : "#ef4444";
     const field = getMetricField(k.k);
-    const clickable = !!field && !!brandId;
+    const isAwaiting = k._state === "awaiting";
+    const isCurrent = k._state === "current";
+    const clickable = !!field && !!brandId && !isAwaiting;
+    const stateBadge = isAwaiting
+      ? { bg: "#C4A76C18", color: "#C4A76C", text: "AGUARDANDO RELATÓRIO" }
+      : isCurrent
+      ? { bg: "#22c55e18", color: "#22c55e", text: k._progress ? `EM ANDAMENTO · DIA ${k._progress.current} DE ${k._progress.total}` : "EM ANDAMENTO" }
+      : null;
     return (
-      <div onClick={() => clickable && setMetricModal({ label: k.k, field, brandId })} style={{ ...card, padding: mob ? "14px 12px" : "16px 14px", cursor: clickable ? "pointer" : "default", transition: "border-color 0.2s", ...fi(delay) }} onMouseEnter={e => clickable && (e.currentTarget.style.borderColor = C.dourado+"60")} onMouseLeave={e => clickable && (e.currentTarget.style.borderColor = C.glassBd)}>
-        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>{k.k}</div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: k.p ? 10 : 0 }}>
-          <span style={{ fontSize: mob ? 22 : 26, fontWeight: 500, lineHeight: 1, fontFamily: "'Marisa',serif", color: C.text }}>{k.v}</span>
-          {k.p && <span style={{ fontSize: 11, color: barColor, fontWeight: 600, fontFamily: "'Gotham',sans-serif" }}>{k.noArrow ? "" : (k.u ? "\u25B2" : "\u25BC")} {k.p}</span>}
+      <div onClick={() => clickable && setMetricModal({ label: k.k, field, brandId })} style={{ ...card, padding: mob ? "14px 12px" : "16px 14px", cursor: clickable ? "pointer" : "default", transition: "border-color 0.2s", opacity: isAwaiting ? 0.7 : 1, ...fi(delay) }} onMouseEnter={e => clickable && (e.currentTarget.style.borderColor = C.dourado+"60")} onMouseLeave={e => clickable && (e.currentTarget.style.borderColor = C.glassBd)}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
+          <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>{k.k}</div>
+          {stateBadge && <div style={{ fontSize: 7, color: stateBadge.color, background: stateBadge.bg, padding: "2px 6px", borderRadius: 3, letterSpacing: "0.08em", fontFamily: "'Gotham',sans-serif", fontWeight: 600, whiteSpace: "nowrap" }}>{stateBadge.text}</div>}
         </div>
-        {k.p && !k.noArrow && pctVal > 0 && (
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: k.p && !isAwaiting ? 10 : 0 }}>
+          <span style={{ fontSize: mob ? 22 : 26, fontWeight: 500, lineHeight: 1, fontFamily: "'Marisa',serif", color: C.text }}>{k.v}</span>
+          {k.p && !isAwaiting && <span style={{ fontSize: 11, color: barColor, fontWeight: 600, fontFamily: "'Gotham',sans-serif" }}>{k.noArrow ? "" : (k.u ? "\u25B2" : "\u25BC")} {k.p}</span>}
+        </div>
+        {isAwaiting && k.p && <div style={{ fontSize: 10, color: C.mut, marginTop: 6, fontFamily: "'Gotham',sans-serif" }}>{k.p}</div>}
+        {k.p && !k.noArrow && !isAwaiting && pctVal > 0 && (
           <div style={{ width: "100%", height: 5, borderRadius: 3, background: "rgba(255,255,255,0.04)", overflow: "hidden" }}>
             <div style={{ height: "100%", borderRadius: 3, width: `${pctVal}%`, background: `linear-gradient(90deg, ${barColor}, ${barColor}aa)`, transition: "width 1s ease" }} />
           </div>
@@ -1001,112 +1287,11 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
             {/* ============================================
                 ABA MONTE DOURADO — separado por canal
             ============================================= */}
-            {tab === "monte-dourado" && <>
-              {/* SEÇÃO: INSTAGRAM */}
-              <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(50) }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: `3px solid #E1306C` }}>
-                  <Instagram size={18} color="#E1306C" strokeWidth={1.5} />
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Instagram</div>
-                    <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>@monte.dourado · {getPeriodLabel(period)}</div>
-                  </div>
-                </div>
-                <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                    {(currentKpis || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId={activeBrand || "monte-dourado"} />)}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
-                    <ChartSection title="Alcance" suffix="_alc" id="md_alc" />
-                    <ChartSection title="Visualizações" suffix="_views" id="md_vw" />
-                  </div>
-                </div>
-              </div>
+                        {tab === "monte-dourado" && (
+              <LiveBrandView brandId="monte-dourado" liveData={liveData} C={C} mob={mob} fmt={fmt} />
+            )}
 
-              {/* SEÇÃO: ADS MONTE DOURADO */}
-              {(() => {
-                const adsMonths = allPeriods.filter(pk => db["monte-dourado"]?.[pk]?.inv > 0);
-                if (!adsMonths.length) return null;
-                const d = !isAnual ? db["monte-dourado"]?.[period] : null;
-                const hasAds = d && d.inv > 0;
-                // Dados para gráfico
-                const invHistory = adsMonths.map(pk => {
-                  const r = db["monte-dourado"][pk];
-                  return { m: periodLabels[pk], total: r.inv||0, google: r.invGoogle||0, seg: r.invSeg||0 };
-                });
-                // Totais acumulados
-                let tInv=0, tGoogle=0, tSeg=0;
-                const relevantMonths = isAnual ? adsMonths.filter(pk => pk.startsWith(period.split("-")[1])) : adsMonths;
-                relevantMonths.forEach(pk => { const r=db["monte-dourado"][pk]; tInv+=r.inv||0; tGoogle+=r.invGoogle||0; tSeg+=r.invSeg||0; });
-                const periodLabel = isAnual ? period.split("-")[1] : (hasAds ? getPeriodLabel(period) : "Acumulado");
-                return (
-                  <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(120) }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #4285F4" }}>
-                      <Globe size={18} color="#4285F4" strokeWidth={1.5} />
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Tráfego pago</div>
-                        <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Google Ads + Camp. Seguidores · {periodLabel}</div>
-                      </div>
-                    </div>
-                    {/* KPIs */}
-                    <div style={{ padding: mob ? "12px 10px" : "14px 14px", display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 6 }}>
-                      <div style={{ ...card, padding: "14px 12px", cursor: "pointer" }} onClick={() => setMetricModal({ label: "Investimento", field: "inv", brandId: "monte-dourado" })}>
-                        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Investimento total</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(hasAds ? d.inv : tInv)}</div>
-                        <div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>{hasAds ? "" : `${relevantMonths.length} meses`}</div>
-                      </div>
-                      <div style={{ ...card, padding: "14px 12px", cursor: "pointer" }} onClick={() => setMetricModal({ label: "Google Ads", field: "invGoogle", brandId: "monte-dourado" })}>
-                        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Google Ads</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(hasAds ? (d.invGoogle||0) : tGoogle)}</div>
-                        <div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>Palavras-chave</div>
-                      </div>
-                      <div style={{ ...card, padding: "14px 12px", cursor: "pointer" }} onClick={() => setMetricModal({ label: "Camp. Seguidores", field: "invSeg", brandId: "monte-dourado" })}>
-                        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Camp. Seguidores</div>
-                        <div style={{ fontSize: 22, fontWeight: 500, fontFamily: "'Marisa',serif" }}>R$ {fmt(hasAds ? (d.invSeg||0) : tSeg)}</div>
-                        <div style={{ fontSize: 9, color: C.sec, marginTop: 2 }}>Crescimento de base</div>
-                      </div>
-                    </div>
-                    {/* Gráfico de barras */}
-                    <div style={{ padding: mob ? "4px 10px 14px" : "4px 14px 16px" }}>
-                      <ResponsiveContainer width="100%" height={mob ? 160 : 200}>
-                        <BarChart data={invHistory} barSize={mob ? 20 : 32}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-                          <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 30} />
-                          <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={45} />
-                          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: `1px solid #4285F4`, borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#4285F4", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4", fontWeight: 500 }}>R$ {payload[0]?.payload?.total?.toLocaleString("pt-BR")}</div>{payload[0]?.payload?.google > 0 && <div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>Google: R$ {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div>}{payload[0]?.payload?.seg > 0 && <div style={{ fontSize: 9, color: "#C8BDA8" }}>Camp. Seg: R$ {payload[0]?.payload?.seg?.toLocaleString("pt-BR")}</div>}</div> : null} />
-                          <Bar dataKey="total" radius={[4,4,0,0]}>
-                            {invHistory.map((e, i) => <Cell key={i} fill={hasAds && e.m === periodLabels[period] ? "#4285F4" : "#4285F4" + "80"} />)}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* SEÇÃO: TIKTOK */}
-              <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(200) }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mob ? "12px 14px" : "14px 16px", borderLeft: `3px solid #69C9D0`, opacity: 0.5 }}>
-                  <Music2 size={18} color="#69C9D0" strokeWidth={1.5} />
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>TikTok</div>
-                    <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Em breve</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* SEÇÃO: YOUTUBE */}
-              <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(250) }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: mob ? "12px 14px" : "14px 16px", borderLeft: `3px solid #FF0000`, opacity: 0.5 }}>
-                  <Youtube size={18} color="#FF0000" strokeWidth={1.5} />
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>YouTube</div>
-                    <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>Em breve</div>
-                  </div>
-                </div>
-              </div>
-            </>}
-
-            {/* ============================================
+                        {/* ============================================
                 ABA EMPREENDIMENTOS — separado por empresa
             ============================================= */}
             {tab === "empreendimentos" && <>
@@ -1261,12 +1446,12 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                       <div style={{ width: 4, height: 4, borderRadius: "50%", background: C.dourado }} />
                       <span style={{ fontSize: 8, color: C.dourado, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Conclusão</span>
                     </div>
-                    <h3 style={{ fontSize: mob ? 13 : 14, fontWeight: 400, lineHeight: 1.4, marginBottom: 6, fontFamily: "'Marisa',serif", textTransform: "uppercase" }}>{ins.title}</h3>
-                    {!aiConclusion && ins.body.map((p, i) => <p key={i} style={{ fontSize: mob ? 10 : 11, color: C.sec, lineHeight: 1.6, marginBottom: 4, fontFamily: "'Gotham',sans-serif" }}>{p}</p>)}
-                    {aiConclusion && <p style={{ fontSize: mob ? 10 : 11, color: C.sec, lineHeight: 1.7, fontFamily: "'Gotham',sans-serif", whiteSpace: "pre-line" }}>{aiConclusion}</p>}
+                    <h3 style={{ fontSize: mob ? 13 : 14, fontWeight: 400, lineHeight: 1.4, marginBottom: 6, fontFamily: "'Marisa',serif", textTransform: "uppercase", color: "#F5F0E4" }}>{ins.title}</h3>
+                    {!aiConclusion && ins.body.map((p, i) => <p key={i} style={{ fontSize: mob ? 10 : 11, color: "rgba(245,240,228,0.85)", lineHeight: 1.6, marginBottom: 4, fontFamily: "'Gotham',sans-serif" }}>{p}</p>)}
+                    {aiConclusion && <p style={{ fontSize: mob ? 10 : 11, color: "rgba(245,240,228,0.85)", lineHeight: 1.7, fontFamily: "'Gotham',sans-serif", whiteSpace: "pre-line" }}>{aiConclusion}</p>}
                     <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                       <button onClick={() => fetchAiConclusion()} disabled={aiLoading} style={{ padding: "6px 14px", fontSize: 9, borderRadius: 6, border: `1px solid ${C.dourado}40`, background: C.dourado + "15", color: C.dourado, cursor: aiLoading ? "wait" : "pointer", fontFamily: "'Gotham',sans-serif", letterSpacing: "0.05em", textTransform: "uppercase" }}>{aiLoading ? "Gerando..." : "Gerar com IA"}</button>
-                      <input value={aiQuestion} onChange={e => setAiQuestion(e.target.value)} onKeyDown={e => e.key === "Enter" && aiQuestion && fetchAiConclusion(aiQuestion)} placeholder="Faça uma pergunta comparativa..." style={{ flex: 1, minWidth: 140, padding: "6px 10px", fontSize: 10, borderRadius: 6, border: `1px solid ${C.glassBd}`, background: "rgba(255,255,255,0.03)", color: C.text, fontFamily: "'Gotham',sans-serif", outline: "none" }} />
+                      <input value={aiQuestion} onChange={e => setAiQuestion(e.target.value)} onKeyDown={e => e.key === "Enter" && aiQuestion && fetchAiConclusion(aiQuestion)} placeholder="Faça uma pergunta comparativa..." style={{ flex: 1, minWidth: 140, padding: "6px 10px", fontSize: 10, borderRadius: 6, border: "1px solid rgba(245,240,228,0.15)", background: "rgba(255,255,255,0.05)", color: "#F5F0E4", fontFamily: "'Gotham',sans-serif", outline: "none" }} />
                     </div>
                   </div>
                 </div>
