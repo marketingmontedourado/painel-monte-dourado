@@ -1,5 +1,5 @@
 // Vercel Serverless Function — Puxa dados ORGÂNICOS do Instagram via Graph API
-// Versão otimizada — 2 requisições paralelas por conta (não estoura timeout 10s do Vercel Hobby)
+// Versão 4 — corrige erro #100 movendo profile_views pra metric_type=total_value
 //
 // Env vars necessárias: META_ACCESS_TOKEN
 //
@@ -43,23 +43,25 @@ export default async function handler(req, res) {
       const since = Math.floor((Date.now() - days * 86400 * 1000) / 1000);
       const until = Math.floor(Date.now() / 1000);
 
-      // Paralelo: info + 2 chamadas de insights
+      // Paralelo: info + 2 chamadas de insights (separadas pelo tipo de métrica que a Meta exige)
       const [infoRes, dailyRes, totalRes] = await Promise.allSettled([
         metaFetch(`${GRAPH_URL}/${igId}`, {
           fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
           access_token: token,
         }),
-        // Métricas com period=day (retornam série temporal)
+        // Métricas com period=day SEM metric_type (retornam série temporal direto)
+        // Importante: profile_views NÃO entra aqui (Meta v22 exige total_value pra ela)
         metaFetch(`${GRAPH_URL}/${igId}/insights`, {
-          metric: "reach,profile_views,follower_count",
+          metric: "reach,follower_count",
           period: "day",
           since,
           until,
           access_token: token,
         }),
-        // Métricas com metric_type=total_value (retornam valor agregado)
+        // Métricas com metric_type=total_value (retornam valor agregado do período)
+        // profile_views entra aqui agora
         metaFetch(`${GRAPH_URL}/${igId}/insights`, {
-          metric: "views,accounts_engaged,total_interactions",
+          metric: "views,accounts_engaged,total_interactions,profile_views",
           metric_type: "total_value",
           period: "day",
           since,
@@ -109,7 +111,7 @@ export default async function handler(req, res) {
         insights_errors: Object.keys(errors).length ? errors : undefined,
       };
 
-      // 3) Opcional: mídia recente (custo extra de tempo — só quando solicitado)
+      // 3) Opcional: mídia recente
       if (includeMedia) {
         try {
           const m = await metaFetch(`${GRAPH_URL}/${igId}/media`, {
