@@ -1,20 +1,18 @@
-// Vercel Serverless Function — Puxa dados de campanhas via Meta Marketing API
-// Env vars necessárias:
-//   META_ACCESS_TOKEN     → token do System User painelmd (nunca expira)
-//   META_AD_ACCOUNT_ID    → ID da conta de anúncios (formato act_XXXXXXXXXXX OU só os dígitos)
+// Vercel Serverless Function — Histórico completo de campanhas via Meta Marketing API
+// Versão 2 — default puxa desde 2025-05-01 (ou desde a primeira campanha) até hoje
 //
-// Query params (opcionais):
-//   since=YYYY-MM-DD      → data inicial (default: 6 meses atrás)
+// Env vars: META_ACCESS_TOKEN, META_AD_ACCOUNT_ID
+//
+// Query params:
+//   since=YYYY-MM-DD      → data inicial (default: 2025-05-01)
 //   until=YYYY-MM-DD      → data final (default: hoje)
 //   level=campaign|adset|ad   → granularidade (default: campaign)
-//
-// Retorna JSON: { success, account, period, data: [...meses por campanha] }
 
 const META_API_VERSION = "v22.0";
 const GRAPH_URL = `https://graph.facebook.com/${META_API_VERSION}`;
+const DEFAULT_SINCE = "2025-05-01";
 
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -23,46 +21,29 @@ export default async function handler(req, res) {
 
   const token = process.env.META_ACCESS_TOKEN;
   const rawAcc = process.env.META_AD_ACCOUNT_ID;
-
   if (!token) return res.status(500).json({ error: "META_ACCESS_TOKEN não configurado" });
   if (!rawAcc) return res.status(500).json({ error: "META_AD_ACCOUNT_ID não configurado" });
 
-  // Normaliza ID: aceita "act_123..." ou só "123..."
   const accountId = rawAcc.startsWith("act_") ? rawAcc : `act_${rawAcc}`;
 
-  // Período padrão: últimos 6 meses até hoje
   const today = new Date();
-  const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 6, 1);
   const fmt = (d) => d.toISOString().slice(0, 10);
-  const since = req.query.since || fmt(sixMonthsAgo);
+  const since = req.query.since || DEFAULT_SINCE;
   const until = req.query.until || fmt(today);
   const level = req.query.level || "campaign";
 
   try {
-    // 1) Dados gerais da conta
     const accountInfo = await metaFetch(`${GRAPH_URL}/${accountId}`, {
       fields: "name,currency,timezone_name,account_status,business",
       access_token: token,
     });
 
-    // 2) Insights mensais por campanha
     const insightsFields = [
-      "campaign_id",
-      "campaign_name",
-      "adset_id",
-      "adset_name",
-      "spend",
-      "impressions",
-      "reach",
-      "frequency",
-      "clicks",
-      "ctr",
-      "cpc",
-      "cpm",
-      "actions",
-      "action_values",
-      "date_start",
-      "date_stop",
+      "campaign_id", "campaign_name", "adset_id", "adset_name",
+      "spend", "impressions", "reach", "frequency",
+      "clicks", "ctr", "cpc", "cpm",
+      "actions", "action_values",
+      "date_start", "date_stop",
     ].join(",");
 
     const insights = await metaFetchAllPages(`${GRAPH_URL}/${accountId}/insights`, {
@@ -74,7 +55,6 @@ export default async function handler(req, res) {
       limit: 500,
     });
 
-    // 3) Lista de campanhas (para pegar status e objetivo)
     const campaigns = await metaFetchAllPages(`${GRAPH_URL}/${accountId}/campaigns`, {
       fields: "id,name,status,objective,start_time,stop_time",
       access_token: token,
@@ -84,7 +64,6 @@ export default async function handler(req, res) {
     const campaignMap = {};
     campaigns.forEach(c => { campaignMap[c.id] = c; });
 
-    // 4) Processa insights — adiciona mês legível e extrai mensagens iniciadas
     const data = insights.map(row => {
       const monthKey = row.date_start ? row.date_start.slice(0, 7) : "?";
       const msgs = extractAction(row.actions, [
@@ -93,7 +72,6 @@ export default async function handler(req, res) {
       ]);
       const leads = extractAction(row.actions, ["lead", "onsite_conversion.lead_grouped"]);
       const camp = campaignMap[row.campaign_id] || {};
-
       return {
         month: monthKey,
         campaign_id: row.campaign_id,
@@ -117,9 +95,7 @@ export default async function handler(req, res) {
       };
     });
 
-    // Cacheia no edge por 5 minutos (reduz chamadas e custo)
     res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-
     return res.status(200).json({
       success: true,
       account: {
@@ -143,12 +119,10 @@ export default async function handler(req, res) {
   }
 }
 
-// ----- Helpers -----
-
 async function metaFetch(url, params) {
   const qs = new URLSearchParams(params).toString();
   const r = await fetch(`${url}?${qs}`);
-  const json = await r.json();
+  const json = await r.json().catch(() => ({ error: { message: `Resposta não é JSON (HTTP ${r.status})` } }));
   if (!r.ok || json.error) {
     const e = new Error(json.error?.message || `HTTP ${r.status}`);
     e.details = json.error || null;
@@ -157,7 +131,7 @@ async function metaFetch(url, params) {
   return json;
 }
 
-async function metaFetchAllPages(url, params, maxPages = 20) {
+async function metaFetchAllPages(url, params, maxPages = 30) {
   const out = [];
   let next = null;
   let qs = new URLSearchParams(params).toString();
