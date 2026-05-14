@@ -458,7 +458,7 @@ function MdSymbol({ color = "#89765A", size = 48 }) {
 ============================================================ */
 /* ============================================================
    LIVE BRAND VIEW — renderiza uma marca usando exclusivamente dados da API
-   Estrutura: ORGÂNICO AO VIVO (últimos 30 dias) + HISTÓRICO DE ADS (mensal)
+   Estrutura: ORGÂNICO AO VIVO (últimos 30 dias) + HISTÓRICO DE ADS (mensal) + CONCLUSÃO IA
 ============================================================ */
 function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
   const brand = brands.find(b => b.id === brandId);
@@ -467,50 +467,82 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
   const orgAccount = (liveData?.organic?.accounts || []).find(a => usernameToBrand[a.username] === brandId);
   const adsForBrand = (liveData?.ads?.data || []).filter(c => brandFromCampaign(c.campaign_name) === brandId);
 
-  // Agrupa ads por mês
   const adsByMonth = {};
   adsForBrand.forEach(row => {
     const pk = row.month;
     if (!pk) return;
-    if (!adsByMonth[pk]) adsByMonth[pk] = { month: pk, spend: 0, msgs: 0, reach: 0, clicks: 0, campaigns: 0 };
+    if (!adsByMonth[pk]) adsByMonth[pk] = { month: pk, spend: 0, msgs: 0, reach: 0, clicks: 0, impressions: 0, campaigns: 0 };
     const b = adsByMonth[pk];
     b.spend += row.spend || 0;
     b.msgs += row.messages || 0;
     b.reach += row.reach || 0;
     b.clicks += row.clicks || 0;
+    b.impressions += row.impressions || 0;
     b.campaigns++;
   });
   const monthsAds = Object.values(adsByMonth).sort((a, b) => a.month.localeCompare(b.month));
 
-  // Top campanhas por gasto agregado
   const campaignAgg = {};
   adsForBrand.forEach(row => {
     const k = row.campaign_id;
     if (!campaignAgg[k]) {
-      campaignAgg[k] = { id: row.campaign_id, name: row.campaign_name, status: row.campaign_status, objective: row.campaign_objective, spend: 0, msgs: 0, reach: 0, months: new Set() };
+      campaignAgg[k] = { id: row.campaign_id, name: row.campaign_name, status: row.campaign_status, objective: row.campaign_objective, spend: 0, msgs: 0, reach: 0, clicks: 0, months: new Set() };
     }
-    campaignAgg[k].spend += row.spend || 0;
-    campaignAgg[k].msgs += row.messages || 0;
-    campaignAgg[k].reach += row.reach || 0;
-    campaignAgg[k].months.add(row.month);
+    const a = campaignAgg[k];
+    a.spend += row.spend || 0;
+    a.msgs += row.messages || 0;
+    a.reach += row.reach || 0;
+    a.clicks += row.clicks || 0;
+    a.months.add(row.month);
   });
-  const topCampaigns = Object.values(campaignAgg)
-    .map(c => ({ ...c, months_count: c.months.size }))
-    .sort((a, b) => b.spend - a.spend);
+  const topCampaigns = Object.values(campaignAgg).map(c => ({ ...c, months_count: c.months.size })).sort((a, b) => b.spend - a.spend);
 
   const totalSpend = monthsAds.reduce((s, m) => s + m.spend, 0);
   const totalMsgs = monthsAds.reduce((s, m) => s + m.msgs, 0);
   const totalReach = monthsAds.reduce((s, m) => s + m.reach, 0);
   const totalClicks = monthsAds.reduce((s, m) => s + m.clicks, 0);
+  const totalImpressions = monthsAds.reduce((s, m) => s + m.impressions, 0);
   const costPerMsg = totalMsgs > 0 ? totalSpend / totalMsgs : 0;
+  const cpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
+  const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+
+  const lastMonth = monthsAds[monthsAds.length - 1];
+  const prevMonth = monthsAds[monthsAds.length - 2];
+  const mom = (cur, old) => (old && cur != null) ? (((cur - old) / old) * 100) : null;
+  const momSpend = lastMonth && prevMonth ? mom(lastMonth.spend, prevMonth.spend) : null;
+  const momMsgs = lastMonth && prevMonth ? mom(lastMonth.msgs, prevMonth.msgs) : null;
+  const momReach = lastMonth && prevMonth ? mom(lastMonth.reach, prevMonth.reach) : null;
+
+  const bestRoiMonth = monthsAds.filter(m => m.spend > 0).reduce((best, m) => {
+    const roi = m.msgs / m.spend;
+    const bestRoi = best ? best.msgs / best.spend : 0;
+    return (!best || roi > bestRoi) ? m : best;
+  }, null);
+
+  let avgEngagement = null;
+  if (orgAccount?.media?.length) {
+    const mediaWithInsights = orgAccount.media.filter(m => m.insights);
+    if (mediaWithInsights.length) {
+      const sumReach = mediaWithInsights.reduce((s, m) => s + (m.insights.reach || 0), 0);
+      const sumInter = mediaWithInsights.reduce((s, m) => s + ((m.insights.likes || 0) + (m.insights.comments || 0) + (m.insights.shares || 0) + (m.insights.saved || 0)), 0);
+      avgEngagement = {
+        reach: Math.round(sumReach / mediaWithInsights.length),
+        interactions: Math.round(sumInter / mediaWithInsights.length),
+        rate: sumReach > 0 ? (sumInter / sumReach) * 100 : 0,
+      };
+    }
+  }
 
   const fmtBRL = (n) => "R$ " + (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   const fmtN = (n) => (n || 0).toLocaleString("pt-BR");
   const fmtMonth = (pk) => {
     const map = { "01":"Jan","02":"Fev","03":"Mar","04":"Abr","05":"Mai","06":"Jun","07":"Jul","08":"Ago","09":"Set","10":"Out","11":"Nov","12":"Dez" };
+    if (!pk) return "—";
     const [y, m] = pk.split("-");
     return `${map[m] || m} ${y.slice(2)}`;
   };
+  const fmtPct = (v) => v == null ? "" : (v > 0 ? `+${v.toFixed(1)}%` : `${v.toFixed(1)}%`);
 
   const card = { background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: mob ? "16px 14px" : "20px 18px" };
   const lab = { fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Marisa',serif" };
@@ -519,8 +551,7 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
 
   const isEmpty = !orgAccount && adsForBrand.length === 0;
 
-  return <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-    {/* HEADER da marca */}
+  return <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 16 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, paddingBottom: 12, borderBottom: `1px solid ${brand.color}40` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ width: 6, height: 32, background: brand.color, borderRadius: 3 }} />
@@ -530,12 +561,11 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
           {!orgAccount && brand.tag && <div style={{ fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif", marginTop: 2, letterSpacing: "0.06em", textTransform: "uppercase" }}>{brand.tag}</div>}
         </div>
       </div>
-      {liveData?.organic?.success || liveData?.ads?.success ? (
+      {(orgAccount || adsForBrand.length > 0) && (
         <div style={{ fontSize: 9, color: C.up, fontFamily: "'Marisa',serif", letterSpacing: "0.16em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.up, animation: "pulse 1.6s ease infinite" }} />
-          Ao vivo
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.up, animation: "pulse 1.6s ease infinite" }} />Ao vivo
         </div>
-      ) : null}
+      )}
     </div>
 
     {isEmpty && (
@@ -545,22 +575,17 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
       </div>
     )}
 
-    {/* SEÇÃO 1: ORGÂNICO AO VIVO */}
     {orgAccount && (
       <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: mob ? "14px 14px 0" : "18px 18px 0", display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>● Orgânico ao vivo</div>
-            <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>Últimos {orgAccount.period_days || 30} dias direto da Meta API</div>
-          </div>
+        <div style={{ padding: mob ? "14px 14px 0" : "18px 18px 0", marginBottom: 14 }}>
+          <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>● Orgânico ao vivo</div>
+          <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>Últimos {orgAccount.period_days || 30} dias direto da Meta API</div>
         </div>
-
-        {/* KPIs orgânicos */}
-        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "1px 0" }}>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : avgEngagement ? "repeat(5, 1fr)" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "1px 0" }}>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Seguidores</div>
             <div style={val}>{fmtN(orgAccount.followers_count)}</div>
-            <div style={sec}>{orgAccount.media_count} posts publicados</div>
+            <div style={sec}>{orgAccount.media_count} posts</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Alcance 30d</div>
@@ -575,22 +600,23 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Interações 30d</div>
             <div style={val}>{fmtN(orgAccount.insights_summary?.total_interactions)}</div>
-            <div style={sec}>likes + coments + shares</div>
+            <div style={sec}>likes+coments+shares</div>
           </div>
+          {avgEngagement && (
+            <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+              <div style={lab}>Engajamento/post</div>
+              <div style={val}>{avgEngagement.rate.toFixed(1)}%</div>
+              <div style={sec}>{fmtN(avgEngagement.interactions)} médio</div>
+            </div>
+          )}
         </div>
 
-        {/* Gráfico de seguidores (variação diária) */}
         {orgAccount.insights_series?.follower_count?.length > 0 && (
           <div style={{ padding: mob ? "16px 12px 8px" : "18px 18px 10px" }}>
-            <div style={{ ...lab, marginBottom: 10 }}>Variação de seguidores (30 dias)</div>
-            <ResponsiveContainer width="100%" height={140}>
+            <div style={{ ...lab, marginBottom: 10 }}>Variação diária de seguidores</div>
+            <ResponsiveContainer width="100%" height={130}>
               <AreaChart data={orgAccount.insights_series.follower_count.map(d => ({ date: d.date.slice(5), value: d.value }))}>
-                <defs>
-                  <linearGradient id={`seg-${brandId}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={brand.color} stopOpacity={0.4} />
-                    <stop offset="100%" stopColor={brand.color} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
+                <defs><linearGradient id={`seg-${brandId}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={brand.color} stopOpacity={0.4} /><stop offset="100%" stopColor={brand.color} stopOpacity={0} /></linearGradient></defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
                 <XAxis dataKey="date" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} width={36} />
@@ -601,14 +627,14 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
           </div>
         )}
 
-        {/* Posts/Reels recentes */}
         {orgAccount.media?.length > 0 && (
           <div style={{ padding: mob ? "8px 14px 16px" : "10px 18px 20px" }}>
-            <div style={{ ...lab, marginBottom: 12 }}>Últimos {orgAccount.media.length} posts e reels</div>
+            <div style={{ ...lab, marginBottom: 12 }}>Posts e reels recentes</div>
             <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10 }}>
               {orgAccount.media.slice(0, 8).map(m => {
                 const ins = m.insights || {};
                 const isReel = m.media_product_type === "REELS";
+                const inter = (ins.likes || 0) + (ins.comments || 0) + (ins.shares || 0) + (ins.saved || 0);
                 return (
                   <a key={m.id} href={m.permalink} target="_blank" rel="noreferrer" style={{ textDecoration: "none", color: "inherit" }}>
                     <div style={{ background: C.bg, border: `1px solid ${C.glassBd}`, borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -616,8 +642,8 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
                         {isReel && <div style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "2px 6px", borderRadius: 3, fontSize: 8, letterSpacing: "0.08em", fontFamily: "'Gotham',sans-serif" }}>REEL</div>}
                       </div>
                       <div style={{ padding: "8px 10px", display: "flex", justifyContent: "space-between", fontSize: 10, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>
-                        <span title="Alcance">👁 {fmtN(ins.reach || 0)}</span>
-                        <span title="Interações">♥ {fmtN((ins.likes || 0) + (ins.comments || 0))}</span>
+                        <span>👁 {fmtN(ins.reach || 0)}</span>
+                        <span>♥ {fmtN(inter)}</span>
                       </div>
                     </div>
                   </a>
@@ -629,37 +655,28 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
       </div>
     )}
 
-    {/* SEÇÃO 2: HISTÓRICO DE ADS */}
     {adsForBrand.length > 0 && (
       <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: mob ? "14px 14px 0" : "18px 18px 0", display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>▣ Histórico de Ads</div>
-            <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>{monthsAds.length} {monthsAds.length === 1 ? "mês" : "meses"} · {topCampaigns.length} campanhas no total</div>
-          </div>
-          {liveData?.ads?.period && (
-            <div style={{ fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>
-              {fmtMonth(liveData.ads.period.since.slice(0,7))} → {fmtMonth(liveData.ads.period.until.slice(0,7))}
-            </div>
-          )}
+        <div style={{ padding: mob ? "14px 14px 0" : "18px 18px 0", marginBottom: 14 }}>
+          <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>▣ Histórico de Ads</div>
+          <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>{monthsAds.length} {monthsAds.length === 1 ? "mês" : "meses"} · {topCampaigns.length} campanhas</div>
         </div>
 
-        {/* KPIs ads */}
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "1px 0" }}>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Investido total</div>
             <div style={val}>{fmtBRL(totalSpend)}</div>
-            <div style={sec}>{monthsAds.length} meses</div>
-          </div>
-          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
-            <div style={lab}>Alcance pago</div>
-            <div style={val}>{fmtN(totalReach)}</div>
-            <div style={sec}>somatório</div>
+            <div style={sec}>{momSpend != null ? <>último mês: <span style={{ color: momSpend > 0 ? C.up : C.down }}>{fmtPct(momSpend)}</span></> : `${monthsAds.length} meses`}</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Mensagens</div>
             <div style={val}>{fmtN(totalMsgs)}</div>
-            <div style={sec}>conversas iniciadas</div>
+            <div style={sec}>{momMsgs != null ? <>último mês: <span style={{ color: momMsgs > 0 ? C.up : C.down }}>{fmtPct(momMsgs)}</span></> : "conversas geradas"}</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
+            <div style={lab}>Alcance pago</div>
+            <div style={val}>{fmtN(totalReach)}</div>
+            <div style={sec}>{momReach != null ? <>último mês: <span style={{ color: momReach > 0 ? C.up : C.down }}>{fmtPct(momReach)}</span></> : "contas únicas"}</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Custo / mensagem</div>
@@ -668,23 +685,50 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
           </div>
         </div>
 
-        {/* Gráfico mensal */}
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "0 0 1px" }}>
+          <div style={{ background: C.card, padding: mob ? "10px 14px" : "12px 18px" }}>
+            <div style={lab}>CPM</div>
+            <div style={{ ...val, fontSize: mob ? 16 : 18 }}>{cpm > 0 ? `R$ ${cpm.toFixed(2)}` : "—"}</div>
+            <div style={sec}>por mil impressões</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "10px 14px" : "12px 18px" }}>
+            <div style={lab}>CPC</div>
+            <div style={{ ...val, fontSize: mob ? 16 : 18 }}>{cpc > 0 ? `R$ ${cpc.toFixed(2)}` : "—"}</div>
+            <div style={sec}>por clique</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "10px 14px" : "12px 18px" }}>
+            <div style={lab}>CTR</div>
+            <div style={{ ...val, fontSize: mob ? 16 : 18 }}>{ctr > 0 ? `${ctr.toFixed(2)}%` : "—"}</div>
+            <div style={sec}>taxa de clique</div>
+          </div>
+          <div style={{ background: C.card, padding: mob ? "10px 14px" : "12px 18px" }}>
+            <div style={lab}>Melhor ROI</div>
+            <div style={{ ...val, fontSize: mob ? 16 : 18 }}>{bestRoiMonth ? fmtMonth(bestRoiMonth.month) : "—"}</div>
+            <div style={sec}>{bestRoiMonth ? `${(bestRoiMonth.msgs / bestRoiMonth.spend).toFixed(2)} msgs/R$` : "—"}</div>
+          </div>
+        </div>
+
         {monthsAds.length > 0 && (
           <div style={{ padding: mob ? "16px 12px 8px" : "18px 18px 10px" }}>
-            <div style={{ ...lab, marginBottom: 10 }}>Investimento mensal</div>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={monthsAds.map(m => ({ m: fmtMonth(m.month), spend: m.spend, msgs: m.msgs, reach: m.reach }))}>
+            <div style={{ ...lab, marginBottom: 10 }}>Investimento e mensagens por mês</div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={monthsAds.map(m => ({ m: fmtMonth(m.month), spend: m.spend, msgs: m.msgs }))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
                 <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 25} />
-                <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={44} />
-                <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 }} formatter={(v, name) => [name === "spend" ? `R$ ${v.toLocaleString("pt-BR")}` : v.toLocaleString("pt-BR"), name === "spend" ? "Investido" : name === "msgs" ? "Mensagens" : "Alcance"]} />
-                <Bar dataKey="spend" fill={brand.color} radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <YAxis yAxisId="L" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={44} />
+                <YAxis yAxisId="R" orientation="right" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={36} />
+                <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 }} formatter={(v, name) => [name === "spend" ? `R$ ${v.toLocaleString("pt-BR")}` : v.toLocaleString("pt-BR"), name === "spend" ? "Investido" : "Mensagens"]} />
+                <Bar yAxisId="L" dataKey="spend" fill={brand.color} radius={[4, 4, 0, 0]} maxBarSize={30} />
+                <Bar yAxisId="R" dataKey="msgs" fill={C.dourado} radius={[4, 4, 0, 0]} maxBarSize={30} />
               </BarChart>
             </ResponsiveContainer>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 6, fontSize: 9, color: C.sec }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 3, background: brand.color, borderRadius: 1 }} />Investido</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 3, background: C.dourado, borderRadius: 1 }} />Mensagens</span>
+            </div>
           </div>
         )}
 
-        {/* Top campanhas */}
         {topCampaigns.length > 0 && (
           <div style={{ padding: mob ? "8px 14px 16px" : "10px 18px 20px" }}>
             <div style={{ ...lab, marginBottom: 10 }}>Campanhas ({topCampaigns.length})</div>
@@ -708,6 +752,79 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
         )}
       </div>
     )}
+
+    {!isEmpty && <LiveConclusion brandId={brandId} brand={brand} orgAccount={orgAccount} monthsAds={monthsAds} topCampaigns={topCampaigns} totalSpend={totalSpend} totalMsgs={totalMsgs} totalReach={totalReach} avgEngagement={avgEngagement} bestRoiMonth={bestRoiMonth} momSpend={momSpend} momMsgs={momMsgs} C={C} mob={mob} fmt={fmt} fmtBRL={fmtBRL} fmtN={fmtN} fmtMonth={fmtMonth} />}
+  </div>;
+}
+
+/* ============================================================
+   LIVE CONCLUSION — card de conclusão executiva por marca, gerada via IA
+============================================================ */
+function LiveConclusion({ brandId, brand, orgAccount, monthsAds, topCampaigns, totalSpend, totalMsgs, totalReach, avgEngagement, bestRoiMonth, momSpend, momMsgs, C, mob, fmt, fmtBRL, fmtN, fmtMonth }) {
+  const [aiText, setAiText] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [question, setQuestion] = useState("");
+
+  const summary = (() => {
+    const parts = [];
+    if (orgAccount) {
+      parts.push(`@${orgAccount.username} tem ${fmtN(orgAccount.followers_count)} seguidores e ${orgAccount.media_count} posts publicados.`);
+      const r = orgAccount.insights_summary?.reach;
+      const v = orgAccount.insights_summary?.views;
+      const i = orgAccount.insights_summary?.total_interactions;
+      if (r) parts.push(`Nos últimos ${orgAccount.period_days || 30} dias: ${fmtN(r)} de alcance, ${fmtN(v)} visualizações e ${fmtN(i)} interações.`);
+      if (avgEngagement) parts.push(`Engajamento médio por post: ${avgEngagement.rate.toFixed(1)}% (${fmtN(avgEngagement.interactions)} interações em ${fmtN(avgEngagement.reach)} alcance).`);
+    }
+    if (monthsAds.length > 0) {
+      parts.push(`Em ${monthsAds.length} ${monthsAds.length === 1 ? "mês" : "meses"} de campanhas, ${fmtBRL(totalSpend)} investidos geraram ${fmtN(totalMsgs)} mensagens e ${fmtN(totalReach)} de alcance pago.`);
+      if (totalMsgs > 0) parts.push(`Custo médio por mensagem: R$ ${(totalSpend / totalMsgs).toFixed(2)}.`);
+      if (bestRoiMonth) parts.push(`Melhor mês de ROI: ${fmtMonth(bestRoiMonth.month)} (${(bestRoiMonth.msgs / bestRoiMonth.spend).toFixed(2)} mensagens por real investido).`);
+      if (momSpend != null) parts.push(`Investimento variou ${momSpend > 0 ? "+" : ""}${momSpend.toFixed(1)}% no último mês.`);
+      if (momMsgs != null) parts.push(`Mensagens variaram ${momMsgs > 0 ? "+" : ""}${momMsgs.toFixed(1)}% no último mês.`);
+    }
+    if (parts.length === 0) parts.push("Sem dados suficientes para gerar resumo.");
+    return parts;
+  })();
+
+  const fetchAi = async (q) => {
+    setLoading(true);
+    try {
+      const payload = {
+        orgAccount: orgAccount ? {
+          username: orgAccount.username, followers_count: orgAccount.followers_count, media_count: orgAccount.media_count,
+          insights_summary: orgAccount.insights_summary, recent_posts: (orgAccount.media || []).slice(0, 6).map(m => ({ media_type: m.media_type, product_type: m.media_product_type, insights: m.insights, timestamp: m.timestamp })),
+        } : null,
+        monthsAds, topCampaigns: topCampaigns.slice(0, 5), totalSpend, totalMsgs, totalReach, avgEngagement, momSpend, momMsgs,
+      };
+      const r = await fetch("/api/conclusion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: payload, period: "Últimos 30 dias (orgânico) + histórico desde Mai/2025 (ads)", brand: brand.name, question: q || "" }) });
+      const j = await r.json();
+      setAiText(j.conclusion || j.error || "Erro ao gerar conclusão.");
+    } catch (e) {
+      setAiText(`Erro: ${e?.message || "Desconhecido"}`);
+    }
+    setLoading(false);
+  };
+
+  return <div style={{ background: C.insightBg, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: mob ? "16px 14px" : "20px 22px", position: "relative", overflow: "hidden" }}>
+    <div style={{ position: "absolute", top: -30, right: -30, width: 160, height: 160, background: `radial-gradient(circle,${brand.color}25,transparent 70%)`, pointerEvents: "none" }} />
+    <div style={{ position: "relative", zIndex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <div style={{ width: 5, height: 5, borderRadius: "50%", background: brand.color }} />
+        <span style={{ fontSize: 9, color: brand.color, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Conclusão executiva — {brand.name}</span>
+      </div>
+      {!aiText && (
+        <div style={{ marginBottom: 12 }}>
+          {summary.map((p, i) => <p key={i} style={{ fontSize: mob ? 11 : 12, color: "rgba(245,240,228,0.88)", lineHeight: 1.6, marginBottom: 6, fontFamily: "'Gotham',sans-serif" }}>{p}</p>)}
+        </div>
+      )}
+      {aiText && (
+        <p style={{ fontSize: mob ? 11 : 12, color: "rgba(245,240,228,0.9)", lineHeight: 1.7, fontFamily: "'Gotham',sans-serif", whiteSpace: "pre-line", marginBottom: 12 }}>{aiText}</p>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={() => fetchAi()} disabled={loading} style={{ padding: "8px 16px", fontSize: 10, borderRadius: 6, border: `1px solid ${brand.color}50`, background: brand.color + "20", color: "#F5F0E4", cursor: loading ? "wait" : "pointer", fontFamily: "'Gotham',sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 500 }}>{loading ? "Gerando..." : aiText ? "Atualizar análise" : "Gerar análise com IA"}</button>
+        <input value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={e => e.key === "Enter" && question && fetchAi(question)} placeholder="Pergunte algo específico..." style={{ flex: 1, minWidth: 180, padding: "8px 12px", fontSize: 10, borderRadius: 6, border: "1px solid rgba(245,240,228,0.15)", background: "rgba(255,255,255,0.06)", color: "#F5F0E4", fontFamily: "'Gotham',sans-serif", outline: "none" }} />
+      </div>
+    </div>
   </div>;
 }
 
