@@ -181,11 +181,20 @@ function applyMetaOverlay(adsResp, organicResp) {
         slot._live = true;
       });
 
-      // Atualiza seguidores no mês mais recente da brand
-      const monthsSorted = Object.keys(db[brand]).sort();
-      if (monthsSorted.length > 0) {
-        const latestMonth = monthsSorted[monthsSorted.length - 1];
-        if (acc.followers_count != null) {
+      // Atualiza seguidores: aplica em TODOS os meses criados pelo overlay (que representam "agora")
+      // E no mês mais recente do hardcoded também, pra manter o KPI Atualizado
+      if (acc.followers_count != null) {
+        // Em todos os meses criados pelo overlay
+        allMonths.forEach(pk => {
+          if (db[brand][pk]) {
+            db[brand][pk].seg = acc.followers_count;
+            db[brand][pk]._live = true;
+          }
+        });
+        // No mês mais recente da brand (garante atualização do último hardcoded também)
+        const monthsSorted = Object.keys(db[brand]).sort();
+        if (monthsSorted.length > 0) {
+          const latestMonth = monthsSorted[monthsSorted.length - 1];
           db[brand][latestMonth].seg = acc.followers_count;
           db[brand][latestMonth]._live = true;
         }
