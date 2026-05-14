@@ -520,6 +520,28 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
     return (!best || roi > bestRoi) ? m : best;
   }, null);
 
+  // Variação da janela: deltas de follower_count e reach H1 vs H2
+  let followersDelta = null;
+  let followersDeltaPct = null;
+  let reachTrend = null;
+  if (orgAccount?.insights_series) {
+    const fSeries = orgAccount.insights_series.follower_count || [];
+    if (fSeries.length) {
+      followersDelta = fSeries.reduce((s, d) => s + (d.value || 0), 0);
+      if (orgAccount.followers_count > 0) {
+        const prevTotal = orgAccount.followers_count - followersDelta;
+        followersDeltaPct = prevTotal > 0 ? (followersDelta / prevTotal) * 100 : null;
+      }
+    }
+    const rSeries = orgAccount.insights_series.reach || [];
+    if (rSeries.length >= 2) {
+      const half = Math.floor(rSeries.length / 2);
+      const h1 = rSeries.slice(0, half).reduce((s, d) => s + (d.value || 0), 0);
+      const h2 = rSeries.slice(half).reduce((s, d) => s + (d.value || 0), 0);
+      if (h1 > 0) reachTrend = ((h2 - h1) / h1) * 100;
+    }
+  }
+
   let avgEngagement = null;
   if (orgAccount?.media?.length) {
     const mediaWithInsights = orgAccount.media.filter(m => m.insights);
@@ -584,13 +606,28 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : avgEngagement ? "repeat(5, 1fr)" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "1px 0" }}>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Seguidores</div>
-            <div style={val}>{fmtN(orgAccount.followers_count)}</div>
-            <div style={sec}>{orgAccount.media_count} posts</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={val}>{fmtN(orgAccount.followers_count)}</span>
+              {followersDelta != null && followersDelta !== 0 && (
+                <span style={{ fontSize: 11, fontWeight: 600, color: followersDelta > 0 ? C.up : C.down, fontFamily: "'Gotham',sans-serif" }}>
+                  {followersDelta > 0 ? "▲" : "▼"} {Math.abs(followersDelta)}
+                  {followersDeltaPct != null && ` (${followersDeltaPct > 0 ? "+" : ""}${followersDeltaPct.toFixed(1)}%)`}
+                </span>
+              )}
+            </div>
+            <div style={sec}>{orgAccount.media_count} posts · 28d</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Alcance 30d</div>
-            <div style={val}>{fmtN(orgAccount.insights_summary?.reach)}</div>
-            <div style={sec}>contas únicas</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={val}>{fmtN(orgAccount.insights_summary?.reach)}</span>
+              {reachTrend != null && (
+                <span style={{ fontSize: 11, fontWeight: 600, color: reachTrend > 0 ? C.up : C.down, fontFamily: "'Gotham',sans-serif" }}>
+                  {reachTrend > 0 ? "▲" : "▼"} {reachTrend > 0 ? "+" : ""}{reachTrend.toFixed(1)}%
+                </span>
+              )}
+            </div>
+            <div style={sec}>{reachTrend != null ? "2ª metade vs 1ª metade" : "contas únicas"}</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Visualizações 30d</div>
@@ -719,12 +756,12 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
                 <YAxis yAxisId="R" orientation="right" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={36} />
                 <Tooltip contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12 }} formatter={(v, name) => [name === "spend" ? `R$ ${v.toLocaleString("pt-BR")}` : v.toLocaleString("pt-BR"), name === "spend" ? "Investido" : "Mensagens"]} />
                 <Bar yAxisId="L" dataKey="spend" fill={brand.color} radius={[4, 4, 0, 0]} maxBarSize={30} />
-                <Bar yAxisId="R" dataKey="msgs" fill={C.dourado} radius={[4, 4, 0, 0]} maxBarSize={30} />
+                <Bar yAxisId="R" dataKey="msgs" fill="#7A9BBF" radius={[4, 4, 0, 0]} maxBarSize={30} />
               </BarChart>
             </ResponsiveContainer>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 6, fontSize: 9, color: C.sec }}>
               <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 3, background: brand.color, borderRadius: 1 }} />Investido</span>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 3, background: C.dourado, borderRadius: 1 }} />Mensagens</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 3, background: "#7A9BBF", borderRadius: 1 }} />Mensagens</span>
             </div>
           </div>
         )}
@@ -1499,81 +1536,6 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
               </div>
             </>}
 
-            {/* CONCLUSÃO */}
-            {(() => {
-              const pl = getPeriodLabel(period);
-              function buildConclusion(bid, pk) {
-                const d = db[bid]?.[pk];
-                const bn = brands.find(b=>b.id===bid)?.name || bid;
-                if (!d) {
-                  // Fallback: tenta mês mais recente
-                  const rr = resolveBrandPeriod(brand, period);
-                  const dd = db[brand]?.[rr.pk];
-                  if (!dd) return { title: `Sem dados para ${bn} em ${pl}.`, body: ["Nenhum relatório disponível para este período."] };
-                  return { title: `Aguardando relatório de ${pl} — exibindo ${periodLabels[rr.pk] || rr.pk}.`, body: [`Seguidores: ${(dd.seg||0).toLocaleString("pt-BR")} · Alcance: ${(dd.alc||0).toLocaleString("pt-BR")} · Investimento: R$ ${fmt(dd.inv||0)}.`] };
-                }
-                const prevIdx = allPeriods.indexOf(pk) - 1;
-                const prev = prevIdx >= 0 ? db[bid]?.[allPeriods[prevIdx]] : null;
-                const lines = [];
-                if (d.seg) lines.push(`Base de seguidores: ${d.seg.toLocaleString("pt-BR")}.`);
-                if (d.alc) { let s = `Alcance de ${fmt(d.alc)}`; if (prev?.alc) { const v = Math.round(((d.alc-prev.alc)/prev.alc)*100); s += v >= 0 ? ` (+${v}% em relação ao mês anterior)` : ` (${v}% em relação ao mês anterior)`; } lines.push(s + "."); }
-                if (d.views) lines.push(`${fmt(d.views)} visualizações no período.`);
-                if (d.inv > 0) { lines.push(`Investimento total de R$ ${d.inv.toLocaleString("pt-BR")}${d.msgs ? ` com ${d.msgs.toLocaleString("pt-BR")} mensagens geradas` : ""}.`); }
-                if (d.inter) lines.push(`${fmt(d.inter)} interações registradas.`);
-                if (d.posts || d.reels || d.stories) { const parts = []; if(d.posts) parts.push(`${d.posts} posts`); if(d.reels) parts.push(`${d.reels} reels`); if(d.stories) parts.push(`${d.stories} stories`); if(parts.length) lines.push(`Conteúdo publicado: ${parts.join(", ")}.`); }
-                let title = `${bn} em ${pl}`;
-                if (d.inv > 0 && d.msgs) title = `${bn} investiu R$ ${fmt(d.inv)} em ${pl}.`;
-                else if (d.alc && prev?.alc) { const v = Math.round(((d.alc-prev.alc)/prev.alc)*100); title = v >= 0 ? `${bn} cresceu ${v}% em alcance em ${pl}.` : `${bn} recuou ${Math.abs(v)}% em alcance em ${pl}.`; }
-                else if (d.seg) title = `${bn}: ${d.seg.toLocaleString("pt-BR")} seguidores em ${pl}.`;
-                return { title, body: lines };
-              }
-              function buildAnualConclusion(bid, year) {
-                const months = allPeriods.filter(pk => pk.startsWith(year) && db[bid]?.[pk]);
-                if (!months.length) return { title: `Sem dados para ${year}.`, body: [] };
-                const bn = brands.find(b=>b.id===bid)?.name || bid;
-                let alc=0, views=0, inter=0, inv=0, msgs=0;
-                months.forEach(pk => { const d=db[bid][pk]; alc+=d.alc||0; views+=d.views||0; inter+=d.inter||0; inv+=d.inv||0; msgs+=d.msgs||0; });
-                const lastD = db[bid][months[months.length-1]];
-                const lines = [];
-                if (lastD?.seg) lines.push(`Base encerrou com ${lastD.seg.toLocaleString("pt-BR")} seguidores.`);
-                lines.push(`Alcance acumulado de ${fmt(alc)} em ${months.length} meses.`);
-                if (views) lines.push(`${fmt(views)} visualizações no total.`);
-                if (inv > 0) lines.push(`Investimento total de R$ ${inv.toLocaleString("pt-BR")}${msgs ? `, gerando ${msgs.toLocaleString("pt-BR")} mensagens` : ""}.`);
-                if (inter) lines.push(`${fmt(inter)} interações acumuladas.`);
-                return { title: `Resumo de ${bn} em ${year}`, body: lines };
-              }
-              function buildGeralConclusion(pk) {
-                const lines = [];
-                brands.forEach(b => { const d = db[b.id]?.[pk]; if (d) { lines.push(`${b.name}: ${d.seg ? d.seg.toLocaleString("pt-BR")+" seg" : ""}${d.alc ? ", alcance "+fmt(d.alc) : ""}${d.inv > 0 ? ", investimento R$ "+fmt(d.inv) : ""}.`); }});
-                if (!lines.length) return { title: `Sem dados gerais para ${pl}.`, body: [] };
-                return { title: `Visão geral — ${pl}`, body: lines };
-              }
-              let ins;
-              if (isAnual) {
-                const y = period.split("-")[1];
-                ins = tab === "monte-dourado" ? buildAnualConclusion("monte-dourado", y) : (brand ? buildAnualConclusion(brand, y) : { title: `Resumo geral de ${y}`, body: brands.map(b => { const ms = allPeriods.filter(pk=>pk.startsWith(y)&&db[b.id]?.[pk]); let a=0,v=0; ms.forEach(pk=>{a+=db[b.id][pk].alc||0;v+=db[b.id][pk].views||0;}); return `${b.name}: ${fmt(a)} alcance, ${fmt(v)} visualizações em ${ms.length} meses.`; }).filter(Boolean) });
-              } else {
-                ins = tab === "monte-dourado" ? buildConclusion("monte-dourado", period) : (brand ? buildConclusion(brand, period) : buildGeralConclusion(period));
-              }
-              return (
-                <div style={{ ...card, padding: mob ? "14px 12px" : "16px 16px", position: "relative", overflow: "hidden", background: C.insightBg, ...fi(300) }}>
-                  <div style={{ position: "absolute", top: -20, right: -20, width: 120, height: 120, background: `radial-gradient(circle,${C.dourado}15,transparent 70%)`, pointerEvents: "none" }} />
-                  <div style={{ position: "relative", zIndex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 8 }}>
-                      <div style={{ width: 4, height: 4, borderRadius: "50%", background: C.dourado }} />
-                      <span style={{ fontSize: 8, color: C.dourado, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Conclusão</span>
-                    </div>
-                    <h3 style={{ fontSize: mob ? 13 : 14, fontWeight: 400, lineHeight: 1.4, marginBottom: 6, fontFamily: "'Marisa',serif", textTransform: "uppercase", color: "#F5F0E4" }}>{ins.title}</h3>
-                    {!aiConclusion && ins.body.map((p, i) => <p key={i} style={{ fontSize: mob ? 10 : 11, color: "rgba(245,240,228,0.85)", lineHeight: 1.6, marginBottom: 4, fontFamily: "'Gotham',sans-serif" }}>{p}</p>)}
-                    {aiConclusion && <p style={{ fontSize: mob ? 10 : 11, color: "rgba(245,240,228,0.85)", lineHeight: 1.7, fontFamily: "'Gotham',sans-serif", whiteSpace: "pre-line" }}>{aiConclusion}</p>}
-                    <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      <button onClick={() => fetchAiConclusion()} disabled={aiLoading} style={{ padding: "6px 14px", fontSize: 9, borderRadius: 6, border: `1px solid ${C.dourado}40`, background: C.dourado + "15", color: C.dourado, cursor: aiLoading ? "wait" : "pointer", fontFamily: "'Gotham',sans-serif", letterSpacing: "0.05em", textTransform: "uppercase" }}>{aiLoading ? "Gerando..." : "Gerar com IA"}</button>
-                      <input value={aiQuestion} onChange={e => setAiQuestion(e.target.value)} onKeyDown={e => e.key === "Enter" && aiQuestion && fetchAiConclusion(aiQuestion)} placeholder="Faça uma pergunta comparativa..." style={{ flex: 1, minWidth: 140, padding: "6px 10px", fontSize: 10, borderRadius: 6, border: "1px solid rgba(245,240,228,0.15)", background: "rgba(255,255,255,0.05)", color: "#F5F0E4", fontFamily: "'Gotham',sans-serif", outline: "none" }} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
           </>}
         </main>
 
