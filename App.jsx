@@ -755,7 +755,7 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
       <div style={{ ...card, padding: 0, overflow: "hidden" }}>
         <div style={{ padding: mob ? "14px 14px 0" : "18px 18px 0", marginBottom: 14 }}>
           <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>▣ Histórico de Ads</div>
-          <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>{monthsAds.length} {monthsAds.length === 1 ? "mês" : "meses"} · {topCampaigns.length} campanhas</div>
+          <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>{monthsAds.length} {monthsAds.length === 1 ? "mês" : "meses"} · {topCampaigns.length} totais · {topCampaigns.filter(c => c.status === "ACTIVE").length} ativas</div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, 1fr)", gap: 1, background: C.glassBd, padding: "1px 0" }}>
@@ -827,14 +827,14 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
 
         {topCampaigns.length > 0 && (
           <div style={{ padding: mob ? "8px 14px 16px" : "10px 18px 20px" }}>
-            <div style={{ ...lab, marginBottom: 10 }}>Campanhas ({topCampaigns.length})</div>
+            <div style={{ ...lab, marginBottom: 10 }}>Campanhas ativas ({topCampaigns.filter(c => c.status === "ACTIVE").length})</div>
             <div style={{ maxHeight: 500, overflowY: "auto" }}>
-              {topCampaigns.map((c, i) => {
+              {topCampaigns.filter(c => c.status === "ACTIVE").map((c, i, arr) => {
                 const ads = creativesByCampaign[c.id] || [];
                 const hasCreatives = ads.length > 0;
                 const isExpanded = expandedCampaign === c.id;
                 return (
-                  <div key={c.id} style={{ borderBottom: i === topCampaigns.length - 1 && !isExpanded ? "none" : `1px solid ${C.glassBd}` }}>
+                  <div key={c.id} style={{ borderBottom: i === arr.length - 1 && !isExpanded ? "none" : `1px solid ${C.glassBd}` }}>
                     <div onClick={() => hasCreatives && setExpandedCampaign(isExpanded ? null : c.id)} style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 100px 90px 90px 24px", gap: 8, padding: "10px 0", fontSize: 12, alignItems: "center", cursor: hasCreatives ? "pointer" : "default", transition: "background 0.15s" }} onMouseEnter={e => hasCreatives && (e.currentTarget.style.background = "rgba(255,255,255,0.02)")} onMouseLeave={e => hasCreatives && (e.currentTarget.style.background = "transparent")}>
                       <div>
                         <div style={{ color: C.text, fontWeight: 500, fontSize: 12, marginBottom: 2 }}>{c.name}</div>
@@ -889,6 +889,80 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
         )}
       </div>
     )}
+
+    {/* COMPARATIVO ENTRE CAMPANHAS ATIVAS */}
+    {topCampaigns.filter(c => c.status === "ACTIVE").length >= 2 && (() => {
+      const actives = topCampaigns.filter(c => c.status === "ACTIVE");
+      const sumSpend = actives.reduce((s, c) => s + c.spend, 0);
+      const sumMsgs = actives.reduce((s, c) => s + c.msgs, 0);
+      const sumReach = actives.reduce((s, c) => s + c.reach, 0);
+      const sumClicks = actives.reduce((s, c) => s + c.clicks, 0);
+      const leaderSpend = actives.reduce((b, c) => !b || c.spend > b.spend ? c : b, null);
+      const leaderMsgs = actives.reduce((b, c) => !b || c.msgs > b.msgs ? c : b, null);
+      const leaderReach = actives.reduce((b, c) => !b || c.reach > b.reach ? c : b, null);
+      const leaderRoi = actives.filter(c => c.spend > 0).reduce((b, c) => {
+        const roi = c.msgs / c.spend;
+        const bestRoi = b ? b.msgs / b.spend : 0;
+        return !b || roi > bestRoi ? c : b;
+      }, null);
+      const leaderCpc = actives.filter(c => c.clicks > 0).reduce((b, c) => {
+        const cpc = c.spend / c.clicks;
+        const bestCpc = b ? b.spend / b.clicks : Infinity;
+        return !b || cpc < bestCpc ? c : b;
+      }, null);
+      return (
+        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: mob ? "14px 14px 12px" : "18px 18px 14px", borderBottom: `1px solid ${C.glassBd}` }}>
+            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>◈ Comparativo de campanhas ativas</div>
+            <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>{actives.length} campanhas rodando agora · líderes marcados com ★</div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "'Gotham',sans-serif" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${C.glassBd}`, background: "rgba(255,255,255,0.02)" }}>
+                  {["Campanha","Investido","Alcance","Cliques","Msgs","CPC","R$/Msg","ROI"].map((h, i) => (
+                    <th key={i} style={{ padding: "10px 12px", textAlign: i === 0 ? "left" : "right", fontWeight: 500, color: C.douDim, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 9 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {actives.map((c, i) => {
+                  const cpc = c.clicks > 0 ? c.spend / c.clicks : null;
+                  const cpm = c.msgs > 0 ? c.spend / c.msgs : null;
+                  const roi = c.spend > 0 ? c.msgs / c.spend : 0;
+                  const lead = (cell, isLeader) => ({ padding: "10px 12px", textAlign: "right", color: isLeader ? brand.color : C.text, fontWeight: isLeader ? 600 : 400, fontFamily: isLeader ? "'Marisa',serif" : "'Gotham',sans-serif" });
+                  return (
+                    <tr key={c.id} style={{ borderBottom: i === actives.length - 1 ? "none" : `1px solid ${C.borderL}` }}>
+                      <td style={{ padding: "10px 12px", color: C.text, maxWidth: mob ? 140 : 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.name}>{c.name}</td>
+                      <td style={lead(c.spend, leaderSpend?.id === c.id)}>{fmtBRL(c.spend)} {leaderSpend?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
+                      <td style={lead(c.reach, leaderReach?.id === c.id)}>{fmtN(c.reach)} {leaderReach?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{fmtN(c.clicks)}</td>
+                      <td style={lead(c.msgs, leaderMsgs?.id === c.id)}>{fmtN(c.msgs)} {leaderMsgs?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
+                      <td style={lead(cpc || 0, leaderCpc?.id === c.id)}>{cpc != null ? `R$ ${cpc.toFixed(2)}` : "—"} {leaderCpc?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", color: cpm != null ? C.text : C.mut }}>{cpm != null ? `R$ ${cpm.toFixed(2)}` : "—"}</td>
+                      <td style={lead(roi, leaderRoi?.id === c.id)}>{c.spend > 0 ? roi.toFixed(2) : "—"} {leaderRoi?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
+                    </tr>
+                  );
+                })}
+                <tr style={{ borderTop: `2px solid ${C.glassBd}`, background: "rgba(255,255,255,0.03)", fontWeight: 600 }}>
+                  <td style={{ padding: "10px 12px", color: C.douDim, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 9, fontFamily: "'Marisa',serif" }}>Total</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: brand.color, fontFamily: "'Marisa',serif" }}>{fmtBRL(sumSpend)}</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{fmtN(sumReach)}</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{fmtN(sumClicks)}</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{fmtN(sumMsgs)}</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.mut, fontSize: 10 }}>méd R$ {sumClicks > 0 ? (sumSpend / sumClicks).toFixed(2) : "—"}</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.mut, fontSize: 10 }}>méd R$ {sumMsgs > 0 ? (sumSpend / sumMsgs).toFixed(2) : "—"}</td>
+                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{sumSpend > 0 ? (sumMsgs / sumSpend).toFixed(2) : "—"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: mob ? "8px 14px 14px" : "10px 18px 16px", fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>
+            <span style={{ color: brand.color }}>★</span> líder da métrica · ROI = mensagens por R$ investido · CPC = custo por clique
+          </div>
+        </div>
+      );
+    })()}
 
     {!isEmpty && <LiveConclusion brandId={brandId} brand={brand} orgAccount={orgAccount} monthsAds={monthsAds} topCampaigns={topCampaigns} totalSpend={totalSpend} totalMsgs={totalMsgs} totalReach={totalReach} avgEngagement={avgEngagement} bestRoiMonth={bestRoiMonth} momSpend={momSpend} momMsgs={momMsgs} C={C} mob={mob} fmt={fmt} fmtBRL={fmtBRL} fmtN={fmtN} fmtMonth={fmtMonth} />}
   </div>;
