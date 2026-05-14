@@ -144,21 +144,24 @@ function applyMetaOverlay(adsResp, organicResp) {
     });
   }
 
-  // 3. Aplica dados ORGÂNICOS — agrega séries diárias por mês + atualiza seguidores
+  // 3. Aplica dados ORGÂNICOS — agrega série diária por mês + distribui totais proporcionalmente
   if (organicResp && organicResp.success && Array.isArray(organicResp.accounts)) {
     organicResp.accounts.forEach(acc => {
       const brand = usernameToBrand[acc.username];
       if (!brand) return;
       if (!db[brand]) db[brand] = {};
 
+      // Série diária de reach é a base — vem dos últimos 28 dias
       const reachByMonth = aggregateSeriesByMonth(acc.insights_series?.reach);
-      const profileByMonth = aggregateSeriesByMonth(acc.insights_series?.profile_views);
       const followerDeltaByMonth = aggregateSeriesByMonth(acc.insights_series?.follower_count);
+      const summary = acc.insights_summary || {};
 
-      // Garante entradas para todos os meses cobertos pela série diária
+      // Total de reach no período (soma dos meses) — usado pra distribuir proporcionalmente
+      const totalReach = Object.values(reachByMonth).reduce((s, v) => s + v, 0);
+
+      // Garante entradas para os meses cobertos
       const allMonths = new Set([
         ...Object.keys(reachByMonth),
-        ...Object.keys(profileByMonth),
         ...Object.keys(followerDeltaByMonth),
       ]);
       allMonths.forEach(pk => {
@@ -170,13 +173,15 @@ function applyMetaOverlay(adsResp, organicResp) {
           slot.org = reachByMonth[pk];
           slot.alc = slot.org + (slot.pago || 0);
         }
-        if (profileByMonth[pk] != null) {
-          slot.vis = profileByMonth[pk];
-        }
+        // Distribuição proporcional ao reach: views, profile_views (vis) e total_interactions
+        const ratio = totalReach > 0 ? (reachByMonth[pk] || 0) / totalReach : 0;
+        if (summary.profile_views != null) slot.vis = Math.round(summary.profile_views * ratio);
+        if (summary.views != null) slot.views = Math.round(summary.views * ratio);
+        if (summary.total_interactions != null) slot.inter = Math.round(summary.total_interactions * ratio);
         slot._live = true;
       });
 
-      // Atualiza seguidores no mês mais recente
+      // Atualiza seguidores no mês mais recente da brand
       const monthsSorted = Object.keys(db[brand]).sort();
       if (monthsSorted.length > 0) {
         const latestMonth = monthsSorted[monthsSorted.length - 1];
@@ -184,10 +189,6 @@ function applyMetaOverlay(adsResp, organicResp) {
           db[brand][latestMonth].seg = acc.followers_count;
           db[brand][latestMonth]._live = true;
         }
-        // Distribui views/interactions totais (summary) no mês mais recente
-        const s = acc.insights_summary || {};
-        if (s.views != null) db[brand][latestMonth].views = s.views;
-        if (s.total_interactions != null) db[brand][latestMonth].inter = s.total_interactions;
       }
     });
   }
