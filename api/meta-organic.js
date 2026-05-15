@@ -1,7 +1,7 @@
 // Vercel Serverless Function — Dados ORGÂNICOS do Instagram via Graph API
-// Versão 5 — inclui posts/reels mais recentes com métricas individuais (otimizado pra timeout)
+// v6 — fechado (CORS + auth + rate limit) + retorna ig_user_id estável (não depende de @username)
 //
-// Env vars: META_ACCESS_TOKEN
+// Env vars: META_ACCESS_TOKEN, MD_API_KEY, ALLOWED_ORIGIN
 //
 // Query params:
 //   ig_user_id=...        → filtra por uma conta específica do IG
@@ -12,12 +12,29 @@
 const META_API_VERSION = "v22.0";
 const GRAPH_URL = `https://graph.facebook.com/${META_API_VERSION}`;
 
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 60;
+const rateBucket = new Map();
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // --- CORS fechado ---
+  const allowedOrigin = process.env.ALLOWED_ORIGIN || "https://painel-monte-dourado.vercel.app";
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-md-key");
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "GET") return res.status(405).json({ error: "Método não permitido" });
+
+  // --- Auth ---
+  const expectedKey = process.env.MD_API_KEY;
+  if (!expectedKey) return res.status(500).json({ error: "MD_API_KEY não configurada no servidor" });
+  const sentKey = req.headers["x-md-key"] || req.query.key;
+  if (sentKey !== expectedKey) return res.status(401).json({ error: "Não autorizado" });
+
+  // --- Rate limit ---
+  const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").toString().split(",")[0].trim();
+  if (!checkRate(ip)) return res.status(429).json({ error: "Muitas requisições — tente em 1 min" });
 
   const token = process.env.META_ACCESS_TOKEN;
   if (!token) return res.status(500).json({ error: "META_ACCESS_TOKEN não configurado" });
@@ -41,7 +58,6 @@ export default async function handler(req, res) {
       const since = Math.floor((Date.now() - days * 86400 * 1000) / 1000);
       const until = Math.floor(Date.now() / 1000);
 
-      // PARALELO: info + insights (daily + total) + media (opcional)
       const tasks = [
         metaFetch(`${GRAPH_URL}/${igId}`, {
           fields: "id,username,name,profile_picture_url,followers_count,follows_count,media_count,biography,website",
@@ -98,7 +114,6 @@ export default async function handler(req, res) {
         errors.total_value = totalRes.reason?.message;
       }
 
-      // Mídia recente: busca insights individuais em paralelo (limite 12 = 12 requests paralelos)
       let media = [];
       if (mediaRes && mediaRes.status === "fulfilled") {
         const mediaItems = mediaRes.value.data || [];
@@ -123,7 +138,7 @@ export default async function handler(req, res) {
       }
 
       return {
-        ig_user_id: info.id || igId,
+        ig_user_id: info.id || igId, // ← chave estável pra atribuição no front
         username: info.username,
         name: info.name,
         profile_picture_url: info.profile_picture_url,
@@ -141,7 +156,7 @@ export default async function handler(req, res) {
       };
     }));
 
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    res.setHeader("Cache-Control", "private, s-maxage=60, stale-while-revalidate=120");
     return res.status(200).json({ success: true, count: accounts.length, accounts });
   } catch (err) {
     return res.status(500).json({
@@ -160,6 +175,18 @@ function mediaMetricsByType(mediaType, productType) {
     return ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"];
   }
   return null;
+}
+
+function checkRate(ip) {
+  const now = Date.now();
+  const entry = rateBucket.get(ip);
+  if (!entry || now - entry.start > RATE_LIMIT_WINDOW_MS) {
+    rateBucket.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  entry.count++;
+  if (entry.count > RATE_LIMIT_MAX) return false;
+  return true;
 }
 
 async function metaFetch(url, params) {
