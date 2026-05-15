@@ -80,9 +80,21 @@ function brandFromCampaign(name) {
   if (n.includes("[V.MORRO]") || n.includes("[VILA DO MORRO]") || n.includes("VILA DO MORRO")) return "vila-morro";
   if (n.includes("[V.CHAPEU]") || n.includes("[V.CHAPÉU]") || n.includes("CHAPEU") || n.includes("CHAPÉU")) return "vila-chapeu";
   if (n.includes("[V.ILHA]") || n.includes("VILA DA ILHA")) return "vila-ilha";
-  return "monte-dourado";
+  if (n.includes("[M.DOURADO]") || n.includes("[MONTE DOURADO]") || n.includes("MONTE DOURADO")) return "monte-dourado";
+  // SEM match explícito: devolve null. NÃO assume Monte Dourado por default
+  // (campanhas mal-nomeadas aparecem em "Não atribuídas" em vez de inflarem MD)
+  return null;
 }
 
+// Mapeamento estável por ig_user_id (preferir ao username, que pode mudar)
+const igIdToBrand = {
+  // preencher conforme você confirmar os IDs (vem do response da Meta API)
+  // "17841401234567890": "monte-dourado",
+  // "17841405555555555": "vila-chapeu",
+  // "17841408888888888": "vila-morro",
+};
+
+// Fallback por username (legado — mantém pra retrocompatibilidade)
 const usernameToBrand = {
   "monte.dourado": "monte-dourado",
   "viladochapeutaiba": "vila-chapeu",
@@ -111,11 +123,24 @@ function applyMetaOverlay(adsResp, organicResp) {
   const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
 
   // 2. Aplica dados de ADS (Meta Marketing API)
+  // Coleta campanhas SEM atribuição de marca pra surfacar como alerta no painel
+  const unattributedCampaigns = [];
   if (adsResp && adsResp.success && Array.isArray(adsResp.data)) {
     const buffer = {};
     adsResp.data.forEach(row => {
       const brand = brandFromCampaign(row.campaign_name);
-      if (!brand) return;
+      if (!brand) {
+        // Não atribuída: registra pra alertar no painel + console
+        if (row.campaign_name && !unattributedCampaigns.find(c => c.id === row.campaign_id)) {
+          unattributedCampaigns.push({
+            id: row.campaign_id,
+            name: row.campaign_name,
+            month: row.month,
+            spend: row.spend || 0,
+          });
+        }
+        return;
+      }
       const pk = row.month;
       if (!pk) return;
       if (!buffer[brand]) buffer[brand] = {};
@@ -155,7 +180,8 @@ function applyMetaOverlay(adsResp, organicResp) {
   //    Para meses passados, mantemos o hardcoded ou marcamos como "awaiting"
   if (organicResp && organicResp.success && Array.isArray(organicResp.accounts)) {
     organicResp.accounts.forEach(acc => {
-      const brand = usernameToBrand[acc.username];
+      // Preferir mapeamento por ig_user_id (estável). Fallback pra username (legado)
+      const brand = igIdToBrand[acc.ig_user_id] || usernameToBrand[acc.username];
       if (!brand) return;
       if (!db[brand]) db[brand] = {};
 
@@ -166,6 +192,9 @@ function applyMetaOverlay(adsResp, organicResp) {
       db[brand][currentMonth]._monthState = "current";
       db[brand][currentMonth]._dayProgress = { current: currentDay, total: lastDayOfMonth };
       db[brand][currentMonth]._live = true;
+      // FLAG: dados de orgânico do mês corrente são APROXIMAÇÃO (janela 28d × ratio)
+      db[brand][currentMonth]._orgApproximation = true;
+      db[brand][currentMonth]._partialLabel = `Parcial · D${currentDay}/${lastDayOfMonth} · aprox. 28d`;
 
       const slot = db[brand][currentMonth];
 
@@ -203,6 +232,18 @@ function applyMetaOverlay(adsResp, organicResp) {
       });
     });
   }
+
+  // Alerta de campanhas não atribuídas — surfacar no console e no window pra UI consumir
+  if (unattributedCampaigns.length) {
+    console.warn(
+      `[Painel MD] ${unattributedCampaigns.length} campanha(s) sem atribuição de marca:`,
+      unattributedCampaigns
+    );
+    if (typeof window !== "undefined") {
+      window.__mdUnattributed = unattributedCampaigns;
+    }
+  }
+  return { unattributedCampaigns };
 }
 
 // Helper: agrega uma série diária [{date, value}] em um objeto { YYYY-MM: sum }
@@ -716,7 +757,7 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
                 <XAxis dataKey="date" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} width={36} />
-                <Tooltip contentStyle={{ background: "#0d1525", border: "1px solid rgba(196,167,108,0.3)", borderRadius: 8, color: "#F5F0E4", fontSize: 12 }} labelStyle={{ color: "#C4A76C" }} itemStyle={{ color: "#F5F0E4" }} />
+                <Tooltip cursor={false} contentStyle={{ background: "#0d1525", border: "1px solid rgba(196,167,108,0.3)", borderRadius: 8, color: "#F5F0E4", fontSize: 12 }} labelStyle={{ color: "#C4A76C" }} itemStyle={{ color: "#F5F0E4" }} />
                 <Area type="monotone" dataKey="value" stroke={brand.color} strokeWidth={2} fill={`url(#seg-${brandId})`} />
               </AreaChart>
             </ResponsiveContainer>
@@ -813,7 +854,7 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
                 <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 25} />
                 <YAxis yAxisId="L" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={44} />
                 <YAxis yAxisId="R" orientation="right" tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={v => fmt(v)} width={36} />
-                <Tooltip contentStyle={{ background: "#0d1525", border: "1px solid rgba(196,167,108,0.3)", borderRadius: 8, color: "#F5F0E4", fontSize: 12 }} labelStyle={{ color: "#C4A76C" }} itemStyle={{ color: "#F5F0E4" }} formatter={(v, name) => [name === "spend" ? `R$ ${v.toLocaleString("pt-BR")}` : v.toLocaleString("pt-BR"), name === "spend" ? "Investido" : "Mensagens"]} />
+                <Tooltip cursor={false} contentStyle={{ background: "#0d1525", border: "1px solid rgba(196,167,108,0.3)", borderRadius: 8, color: "#F5F0E4", fontSize: 12 }} labelStyle={{ color: "#C4A76C" }} itemStyle={{ color: "#F5F0E4" }} formatter={(v, name) => [name === "spend" ? `R$ ${v.toLocaleString("pt-BR")}` : v.toLocaleString("pt-BR"), name === "spend" ? "Investido" : "Mensagens"]} />
                 <Bar yAxisId="L" dataKey="spend" fill={brand.color} radius={[4, 4, 0, 0]} maxBarSize={30} />
                 <Bar yAxisId="R" dataKey="msgs" fill="#7A9BBF" radius={[4, 4, 0, 0]} maxBarSize={30} />
               </BarChart>
@@ -1039,16 +1080,79 @@ function LiveConclusion({ brandId, brand, orgAccount, monthsAds, topCampaigns, t
   </div>;
 }
 
+/* ============================================================
+   DATE RANGE SELECTOR — filtro funcional de período (since → until)
+============================================================ */
+function DateRangeSelector({ dateRange, setDateRange, C, mob }) {
+  const [open, setOpen] = useState(false);
+  const [tempSince, setTempSince] = useState(dateRange.since);
+  const [tempUntil, setTempUntil] = useState(dateRange.until);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const presets = [
+    { id: "30d", label: "30 dias", since: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), until: today },
+    { id: "90d", label: "90 dias", since: new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10), until: today },
+    { id: "year", label: "Este ano", since: `${new Date().getFullYear()}-01-01`, until: today },
+    { id: "all", label: "Tudo", since: "2025-05-01", until: today },
+  ];
+
+  const activePreset = presets.find(p => p.since === dateRange.since && p.until === dateRange.until);
+  const fmtBr = (d) => { const [y,m,dd] = d.split("-"); return `${dd}/${m}/${y.slice(2)}`; };
+  const apply = () => { setDateRange({ since: tempSince, until: tempUntil }); setOpen(false); };
+
+  return (
+    <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <button onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "transparent", border: `1px solid ${C.glassBd}`, borderRadius: 8, cursor: "pointer", color: C.text, fontSize: 11, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.04em" }}>
+        <CalendarDays size={13} color={C.dourado} strokeWidth={1.5} />
+        <span>{activePreset ? activePreset.label : `${fmtBr(dateRange.since)} → ${fmtBr(dateRange.until)}`}</span>
+        <ChevronDown size={11} color={C.mut} strokeWidth={2} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+          <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 16, zIndex: 50, minWidth: 280, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10, fontFamily: "'Marisa',serif" }}>Período rápido</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 16 }}>
+              {presets.map(p => (
+                <button key={p.id} onClick={() => { setDateRange({ since: p.since, until: p.until }); setOpen(false); }} style={{ padding: "8px 10px", background: activePreset?.id === p.id ? C.dourado + "22" : "transparent", border: `1px solid ${activePreset?.id === p.id ? C.dourado : C.glassBd}`, borderRadius: 6, cursor: "pointer", color: activePreset?.id === p.id ? C.dourado : C.text, fontSize: 11, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.04em", textTransform: "uppercase" }}>{p.label}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10, fontFamily: "'Marisa',serif" }}>Personalizar</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 9, color: C.mut, marginBottom: 4, fontFamily: "'Gotham',sans-serif" }}>De</div>
+                <input type="date" value={tempSince} onChange={e => setTempSince(e.target.value)} style={{ width: "100%", padding: "8px 10px", background: C.bg, border: `1px solid ${C.glassBd}`, borderRadius: 6, color: C.text, fontSize: 11, fontFamily: "'Gotham',sans-serif", colorScheme: "dark" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: C.mut, marginBottom: 4, fontFamily: "'Gotham',sans-serif" }}>Até</div>
+                <input type="date" value={tempUntil} onChange={e => setTempUntil(e.target.value)} style={{ width: "100%", padding: "8px 10px", background: C.bg, border: `1px solid ${C.glassBd}`, borderRadius: 6, color: C.text, fontSize: 11, fontFamily: "'Gotham',sans-serif", colorScheme: "dark" }} />
+              </div>
+            </div>
+            <button onClick={apply} style={{ width: "100%", padding: "10px", background: C.dourado, border: "none", borderRadius: 6, cursor: "pointer", color: C.bg, fontSize: 11, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600 }}>Aplicar período</button>
+            <div style={{ fontSize: 9, color: C.mut, marginTop: 10, fontFamily: "'Gotham',sans-serif", textAlign: "center" }}>Afeta dados de Ads · orgânico fica sempre nos últimos 30 dias</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   const [liveSyncAt, setLiveSyncAt] = useState(null);
   const [liveError, setLiveError] = useState(null);
   const [liveData, setLiveData] = useState(null);
+  const [dateRange, setDateRange] = useState({ since: "2025-05-01", until: new Date().toISOString().slice(0, 10) });
   useEffect(() => {
     let cancelled = false;
+    // Helper de fetch autenticado — manda x-md-key (Vite expõe VITE_* no client)
+    const apiKey = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_MD_API_KEY) || "";
+    const apiFetch = (url) => fetch(url, { headers: { "x-md-key": apiKey } }).then(r => r.json()).catch(e => ({ success: false, error: e?.message }));
+
+    const adsUrl = `/api/meta-ads?since=${dateRange.since}&until=${dateRange.until}`;
     Promise.all([
-      fetch("/api/meta-ads").then(r => r.json()).catch(e => ({ success: false, error: e?.message })),
-      fetch("/api/meta-organic").then(r => r.json()).catch(e => ({ success: false, error: e?.message })),
-      fetch("/api/meta-ads-creatives").then(r => r.json()).catch(e => ({ success: false, error: e?.message })),
+      apiFetch(adsUrl),
+      apiFetch("/api/meta-organic"),
+      apiFetch("/api/meta-ads-creatives"),
     ]).then(([adsResp, orgResp, creativesResp]) => {
       if (cancelled) return;
       try {
@@ -1063,7 +1167,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
       }
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [dateRange.since, dateRange.until]);
   const mob = useM();
   useEffect(() => { const s = document.createElement("style"); s.textContent = FONT_CSS; document.head.appendChild(s); return () => s.remove(); }, []);
   const [tab, setTab] = useState("monte-dourado");
@@ -1251,6 +1355,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {mob && <button onClick={toggle} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 8px", cursor: "pointer", color: C.sec, display: "flex", alignItems: "center" }}>{mode === "dark" ? <Sun size={14} color={C.dourado} /> : <Moon size={14} color={C.dourado} />}</button>}
             {mob && <button onClick={onSwitch} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 9, color: C.dourado, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Sair</button>}
+            <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
             <button onClick={() => setMenu(!menu)} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: C.sec, display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
               <Menu size={14} color={C.sec} strokeWidth={1.5} />
               {!mob && "Filtros"}
@@ -1399,7 +1504,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
                     <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 30} />
                     <YAxis tick={{ fill: C.mut, fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={50} />
-                    <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload, label }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: C.dourado, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>{payload.map((p,i) => <div key={i} style={{ fontSize: 11, color: p.color, marginBottom: 2 }}>{p.name}: R$ {p.value?.toLocaleString("pt-BR")}</div>)}</div> : null} />
+                    <Tooltip cursor={false} content={({ active, payload, label }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: C.dourado, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>{payload.map((p,i) => <div key={i} style={{ fontSize: 11, color: p.color, marginBottom: 2 }}>{p.name}: R$ {p.value?.toLocaleString("pt-BR")}</div>)}</div> : null} />
                     <Bar dataKey="Monte Dourado" fill="#C4A76C" radius={[3,3,0,0]} />
                     <Bar dataKey="Vila do Morro" fill="#6B8F7B" radius={[3,3,0,0]} />
                   </BarChart>
@@ -1510,7 +1615,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                           <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={0} />
                           <YAxis yAxisId="inv" tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={v => `R$${fmt(v)}`} width={55} />
                           <YAxis yAxisId="msgs" orientation="right" tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} width={35} />
-                          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 11, color: "#C4A76C" }}>Investimento: R$ {payload[0]?.payload?.inv?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 11, color: "#69C9D0" }}>Mensagens: {payload[0]?.payload?.msgs}</div><div style={{ fontSize: 11, color: C.sec }}>Custo/msg: R$ {payload[0]?.payload?.custo?.toFixed(2).replace(".",",")}</div></div> : null} />
+                          <Tooltip cursor={false} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 11, color: "#C4A76C" }}>Investimento: R$ {payload[0]?.payload?.inv?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 11, color: "#69C9D0" }}>Mensagens: {payload[0]?.payload?.msgs}</div><div style={{ fontSize: 11, color: C.sec }}>Custo/msg: R$ {payload[0]?.payload?.custo?.toFixed(2).replace(".",",")}</div></div> : null} />
                           <Bar yAxisId="inv" dataKey="inv" fill="#C4A76C" radius={[3,3,0,0]} name="Investimento" />
                           <Bar yAxisId="msgs" dataKey="msgs" fill="#69C9D0" radius={[3,3,0,0]} name="Mensagens" />
                         </BarChart>
@@ -1688,7 +1793,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false} />
                           <XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 8 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0} angle={mob ? -35 : 0} textAnchor={mob ? "end" : "middle"} height={mob ? 40 : 30} />
                           <YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={v => `R$${fmt(v)}`} width={50} />
-                          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.05)' }} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4", fontWeight: 500 }}>R$ {payload[0].value?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>Meta {payload[0]?.payload?.meta?.toLocaleString("pt-BR")} · Google {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div></div> : null} />
+                          <Tooltip cursor={false} content={({ active, payload }) => active && payload?.length ? <div style={{ background: "rgba(8,14,26,0.95)", border: "1px solid #6B8F7B", borderRadius: 6, padding: "8px 12px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}><div style={{ fontSize: 10, color: "#6B8F7B", textTransform: "uppercase", marginBottom: 4 }}>{payload[0]?.payload?.m}</div><div style={{ fontSize: 13, color: "#F5F0E4", fontWeight: 500 }}>R$ {payload[0].value?.toLocaleString("pt-BR")}</div><div style={{ fontSize: 9, color: "#C8BDA8", marginTop: 2 }}>Meta {payload[0]?.payload?.meta?.toLocaleString("pt-BR")} · Google {payload[0]?.payload?.google?.toLocaleString("pt-BR")}</div></div> : null} />
                           <Bar dataKey="Vila do Morro" radius={[4, 4, 0, 0]} fill="#6B8F7B" />
                         </BarChart>
                       </ResponsiveContainer>
@@ -1774,11 +1879,13 @@ function LiveMetaPanel({ C, mob }) {
   const refresh = () => {
     setAds({ loading: true, error: null, data: null });
     setOrganic({ loading: true, error: null, data: null });
-    fetch("/api/meta-ads")
+    const apiKey = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_MD_API_KEY) || "";
+    const headers = { "x-md-key": apiKey };
+    fetch("/api/meta-ads", { headers })
       .then(r => r.json())
       .then(j => setAds({ loading: false, error: j.success ? null : (j.error || "Erro"), data: j }))
       .catch(e => setAds({ loading: false, error: e?.message || "Erro de rede", data: null }));
-    fetch("/api/meta-organic")
+    fetch("/api/meta-organic", { headers })
       .then(r => r.json())
       .then(j => setOrganic({ loading: false, error: j.success ? null : (j.error || "Erro"), data: j }))
       .catch(e => setOrganic({ loading: false, error: e?.message || "Erro de rede", data: null }));
@@ -2425,13 +2532,23 @@ function LoginView({ onLogin }) {
   const submitPin = async (p) => {
     setLoading(true);
     try {
-      const r = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: p }) });
+      // /api/auth seta cookie HttpOnly Secure SameSite=Strict — NÃO usa localStorage
+      const r = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ pin: p }),
+      });
       const j = await r.json();
       if (j.success) {
-        if (remember) localStorage.setItem("md_session", JSON.stringify({ name: j.name, role: j.role, token: j.token }));
         setWelcome(j.name);
-        // Registra acesso
-        fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: j.name, role: j.role, event: "login" }) }).catch(()=>{});
+        // Registra acesso (track usa o mesmo cookie)
+        fetch("/api/track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ event: "login" }),
+        }).catch(()=>{});
         setTimeout(() => onLogin({ name: j.name, role: j.role }), 1800);
       } else {
         setError(j.error || "PIN incorreto");
@@ -2495,20 +2612,24 @@ export default function App() {
   const C = themes[mode];
   const toggle = () => setMode(mode === "dark" ? "light" : "dark");
 
-  // Checar sessão salva
+  // Checar sessão via cookie HttpOnly — valida no servidor (não confia em valor local)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("md_session");
-      if (saved) {
-        const s = JSON.parse(saved);
-        if (s.name && s.role) setUser(s);
-      }
-    } catch(e) {}
+    let cancelled = false;
+    fetch("/api/auth", { method: "GET", credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (cancelled) return;
+        if (j && j.success && j.name && j.role) setUser({ name: j.name, role: j.role });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("md_session");
-    setUser(null);
+    // Limpa o cookie no servidor — não fica resíduo no client
+    fetch("/api/logout", { method: "POST", credentials: "include" })
+      .catch(() => {})
+      .finally(() => setUser(null));
   };
 
   const [showAdmin, setShowAdmin] = useState(false);
