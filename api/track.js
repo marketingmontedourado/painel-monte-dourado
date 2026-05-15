@@ -1,73 +1,132 @@
-// Vercel Serverless Function — Tracking de acessos
-// Env var: TRACKING_URL (Google Apps Script Web App URL)
+// Vercel Serverless Function — Tracking de eventos do painel
+// v2 — fechado (sessão obrigatória; GET só pra admin)
+//
+// Env vars:
+//   MD_SESSION_SECRET    → mesmo segredo do api-auth-v2
+//   ALLOWED_ORIGIN       → origem permitida no CORS
+//   TRACK_STORE_URL      → (opcional) URL externa pra persistir (ex: Supabase REST)
+//                           Se ausente, mantém em memória (perde no cold start)
+//   TRACK_STORE_KEY      → (opcional) chave de auth pro store externo
+//
+// Endpoints:
+//   POST  → corpo { event, tab, brand, period, ... } → grava evento (usa nome/role da sessão)
+//   GET   → admin only → retorna { success, data: [...eventos] }
+
+import crypto from "crypto";
+
+const COOKIE_NAME = "md_session";
+const MAX_EVENTS_IN_MEMORY = 500;
+const events = []; // ring buffer em memória (fallback se TRACK_STORE_URL ausente)
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  const allowedOrigin = process.env.ALLOWED_ORIGIN || "https://painel-monte-dourado.vercel.app";
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  const trackingUrl = process.env.TRACKING_URL;
+  // Toda chamada exige sessão
+  const session = readSession(req);
+  if (!session) return res.status(401).json({ success: false, error: "Não autorizado" });
 
-  // POST — registrar evento
-  if (req.method === "POST") {
-    const { name, role, event, tab, brand, period } = req.body || {};
-    const entry = {
-      timestamp: new Date().toISOString(),
-      name: name || "",
-      role: role || "",
-      event: event || "",
-      tab: tab || "",
-      brand: brand || "",
-      period: period || "",
-      ua: (req.headers["user-agent"] || "").substring(0, 100),
-    };
+  if (req.method === "POST") return handlePost(req, res, session);
+  if (req.method === "GET") return handleGet(req, res, session);
+  return res.status(405).json({ success: false, error: "Método não permitido" });
+}
 
-    if (!trackingUrl) return res.status(200).json({ ok: true });
+async function handlePost(req, res, session) {
+  const body = req.body || {};
+  const ev = {
+    name: session.n,         // sempre da sessão, NUNCA do body (anti-spoofing)
+    role: session.r,
+    event: String(body.event || "unknown").slice(0, 64),
+    tab: body.tab ? String(body.tab).slice(0, 64) : null,
+    brand: body.brand ? String(body.brand).slice(0, 64) : null,
+    period: body.period ? String(body.period).slice(0, 32) : null,
+    ip_partial: maskIp(getIp(req)),
+    ts: new Date().toISOString(),
+  };
 
+  // Persiste em store externo se configurado
+  const storeUrl = process.env.TRACK_STORE_URL;
+  const storeKey = process.env.TRACK_STORE_KEY;
+  if (storeUrl) {
     try {
-      // Google Apps Script retorna redirect 302 — precisa seguir manualmente
-      const r1 = await fetch(trackingUrl, {
+      await fetch(storeUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(entry),
-        redirect: "manual",
+        headers: {
+          "Content-Type": "application/json",
+          ...(storeKey ? { "Authorization": `Bearer ${storeKey}` } : {}),
+        },
+        body: JSON.stringify(ev),
       });
-      // Se redirect, segue com POST
-      if (r1.status >= 300 && r1.status < 400) {
-        const loc = r1.headers.get("location");
-        if (loc) {
-          await fetch(loc, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(entry),
-            redirect: "follow",
-          });
-        }
-      }
-      return res.status(200).json({ ok: true });
-    } catch (e) {
-      return res.status(200).json({ ok: true });
+    } catch {
+      // não bloqueia o request — só loga
+      pushInMemory(ev);
     }
+  } else {
+    pushInMemory(ev);
   }
 
-  // GET — buscar dados de analytics
-  if (req.method === "GET") {
-    if (!trackingUrl) return res.status(200).json({ data: [] });
-    try {
-      const r = await fetch(trackingUrl, { redirect: "follow" });
-      const txt = await r.text();
-      try {
-        const j = JSON.parse(txt);
-        return res.status(200).json(j);
-      } catch (e) {
-        // Se recebeu HTML (redirect do Google), tenta extrair JSON
-        return res.status(200).json({ data: [] });
-      }
-    } catch (e) {
-      return res.status(200).json({ data: [] });
+  return res.status(200).json({ success: true });
+}
+
+async function handleGet(req, res, session) {
+  // GET é restrito a admin (antes retornava dados pra qualquer um)
+  if (session.r !== "admin") {
+    return res.status(403).json({ success: false, error: "Apenas administradores" });
+  }
+  const limit = Math.min(parseInt(req.query.limit || "200", 10), MAX_EVENTS_IN_MEMORY);
+  const data = events.slice(-limit).reverse();
+  return res.status(200).json({ success: true, count: data.length, data });
+}
+
+// ----- Helpers -----
+
+function pushInMemory(ev) {
+  events.push(ev);
+  if (events.length > MAX_EVENTS_IN_MEMORY) events.shift();
+}
+
+function maskIp(ip) {
+  if (!ip) return "unknown";
+  // mascara último octeto pra privacidade (LGPD): 200.123.45.67 → 200.123.45.x
+  if (ip.includes(".")) return ip.split(".").slice(0, 3).join(".") + ".x";
+  if (ip.includes(":")) return ip.split(":").slice(0, 4).join(":") + ":x";
+  return ip.slice(0, 12) + "…";
+}
+
+function getIp(req) {
+  return (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown")
+    .toString().split(",")[0].trim();
+}
+
+function readSession(req) {
+  const secret = process.env.MD_SESSION_SECRET;
+  if (!secret) return null;
+  const header = req.headers.cookie || "";
+  const parts = header.split(";").map(s => s.trim());
+  let cookieValue = null;
+  for (const p of parts) {
+    if (p.startsWith(`${COOKIE_NAME}=`)) {
+      cookieValue = p.slice(COOKIE_NAME.length + 1);
+      break;
     }
   }
-
-  return res.status(405).json({ error: "Metodo nao permitido" });
+  if (!cookieValue || !cookieValue.includes(".")) return null;
+  const [body, sig] = cookieValue.split(".");
+  if (!body || !sig) return null;
+  const expected = crypto.createHmac("sha256", secret).update(body).digest("base64url");
+  try {
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf-8"));
+    if (payload.exp && payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
