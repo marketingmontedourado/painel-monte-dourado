@@ -105,7 +105,17 @@ const usernameToBrand = {
 // Snapshot dos valores originais (pra poder restaurar antes de re-aplicar overlay)
 const _dbSnapshot = JSON.parse(JSON.stringify(db));
 
+// Guard contra execução duplicada (Bug #1 da depuração): React pode re-renderizar e
+// re-executar este useEffect mesmo sem mudança real nos dados — skip se a fingerprint
+// dos dados de entrada não mudou desde a última execução.
+let _lastOverlayKey = null;
+
 function applyMetaOverlay(adsResp, organicResp) {
+  // Fingerprint dos inputs — se idêntica à última execução, pula (bug #1 quickfix)
+  const key = `${adsResp?.total_rows || 0}|${adsResp?.data?.length || 0}|${organicResp?.count || 0}|${organicResp?.accounts?.[0]?.followers_count || 0}`;
+  if (key === _lastOverlayKey && key !== "0|0|0|0") return { unattributedCampaigns: window.__mdUnattributed || [], skipped: true };
+  _lastOverlayKey = key;
+
   // 1. Restaura db pro snapshot original (limpa overlay anterior)
   Object.keys(db).forEach(brand => {
     Object.keys(db[brand] || {}).forEach(pk => { delete db[brand][pk]; });
@@ -1161,6 +1171,9 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
         setLiveSyncAt(new Date());
         if (!adsResp?.success && !orgResp?.success) {
           setLiveError(adsResp?.error || orgResp?.error || "Erro desconhecido");
+        } else {
+          // Bug #4 fix: limpa erro anterior quando recebemos dados válidos
+          setLiveError(null);
         }
       } catch (e) {
         setLiveError(e?.message || "Erro ao aplicar overlay");
@@ -1177,7 +1190,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   const [period, setPeriod] = useState(allPeriods[allPeriods.length - 1]);
   const [menu, setMenu] = useState(false);
   const [ready, setReady] = useState(false);
-  useEffect(() => { setTimeout(() => setReady(true), 80); }, []);
+  useEffect(() => { const t = setTimeout(() => setReady(true), 80); return () => clearTimeout(t); }, []);
   const fi = d => ({ opacity: ready ? 1 : 0, transform: ready ? "translateY(0)" : "translateY(8px)", transition: `all 0.5s cubic-bezier(.4,0,.2,1) ${d}ms` });
 
   // Tracking — registra navegação do usuário
