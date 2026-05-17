@@ -1172,6 +1172,8 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   useEffect(() => { const s = document.createElement("style"); s.textContent = FONT_CSS; document.head.appendChild(s); return () => s.remove(); }, []);
   const [tab, setTab] = useState("monte-dourado");
   const [brand, setBrand] = useState(null);
+  // Drill-down ao vivo dentro da aba Empreendimentos (clica no card → abre LiveBrandView)
+  const [liveBrand, setLiveBrand] = useState(null);
   const [period, setPeriod] = useState(allPeriods[allPeriods.length - 1]);
   const [menu, setMenu] = useState(false);
   const [ready, setReady] = useState(false);
@@ -1728,19 +1730,26 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                         {/* ============================================
                 ABA EMPREENDIMENTOS — separado por empresa
             ============================================= */}
-            {tab === "empreendimentos" && <>
+            {tab === "empreendimentos" && liveBrand && (
+              <div style={{ marginBottom: 16 }}>
+                <button onClick={() => setLiveBrand(null)} style={{ background: "transparent", border: `1px solid ${C.glassBd}`, color: C.text, padding: "8px 14px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontFamily: "'Gotham',sans-serif", marginBottom: 16, letterSpacing: "0.04em", textTransform: "uppercase" }}>← Voltar para Empreendimentos</button>
+                <LiveBrandView brandId={liveBrand} liveData={liveData} C={C} mob={mob} fmt={fmt} />
+              </div>
+            )}
+
+            {tab === "empreendimentos" && !liveBrand && <>
 
               {/* SEÇÃO: VILA DO CHAPÉU */}
               {(!brand || brand === "vila-chapeu") && (
                 <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(50) }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #7A9BBF" }}>
+                  <div onClick={() => setLiveBrand("vila-chapeu")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #7A9BBF", cursor: "pointer", transition: "background 0.15s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#7A9BBF08"} onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 32, height: 32, borderRadius: 8, background: "#7A9BBF18", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <Home size={16} color="#7A9BBF" strokeWidth={1.5} />
                       </div>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Vila do Chapéu</div>
-                        <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>@viladochapeutaiba · {getPeriodLabel(period)}</div>
+                        <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>@viladochapeutaiba · {getPeriodLabel(period)} · clique para ver ao vivo →</div>
                       </div>
                     </div>
                     <span style={{ fontSize: 8, color: "#7A9BBF", background: "#7A9BBF12", padding: "3px 8px", borderRadius: 4, border: "1px solid #7A9BBF25", fontFamily: "'Gotham',sans-serif" }}>100% orgânico · vendido</span>
@@ -1770,14 +1779,14 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
               {/* SEÇÃO: VILA DO MORRO */}
               {(!brand || brand === "vila-morro") && (
                 <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(150) }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #6B8F7B" }}>
+                  <div onClick={() => setLiveBrand("vila-morro")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #6B8F7B", cursor: "pointer", transition: "background 0.15s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#6B8F7B08"} onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 32, height: 32, borderRadius: 8, background: "#6B8F7B18", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <TreePine size={16} color="#6B8F7B" strokeWidth={1.5} />
                       </div>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Vila do Morro</div>
-                        <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>ADS · Meta Ads + Google Ads · {getPeriodLabel(period)}</div>
+                        <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>ADS · Meta Ads + Google Ads · {getPeriodLabel(period)} · clique para ver ao vivo →</div>
                       </div>
                     </div>
                     <span style={{ fontSize: 8, color: "#6B8F7B", background: "#6B8F7B12", padding: "3px 8px", borderRadius: 4, border: "1px solid #6B8F7B25", fontFamily: "'Gotham',sans-serif" }}>@monte.dourado</span>
