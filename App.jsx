@@ -1721,10 +1721,49 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
             </div>
 
             {/* ============================================
-                ABA MONTE DOURADO — separado por canal
+                ABA MONTE DOURADO — card compacto + drill-down
             ============================================= */}
-                        {tab === "monte-dourado" && (
-              <LiveBrandView brandId="monte-dourado" liveData={liveData} C={C} mob={mob} fmt={fmt} />
+            {tab === "monte-dourado" && liveBrand === "monte-dourado" && (
+              <div style={{ marginBottom: 16 }}>
+                <button onClick={() => setLiveBrand(null)} style={{ background: "transparent", border: `1px solid ${C.glassBd}`, color: C.text, padding: "8px 14px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontFamily: "'Gotham',sans-serif", marginBottom: 16, letterSpacing: "0.04em", textTransform: "uppercase" }}>← Voltar</button>
+                <LiveBrandView brandId="monte-dourado" liveData={liveData} C={C} mob={mob} fmt={fmt} />
+              </div>
+            )}
+
+            {tab === "monte-dourado" && liveBrand !== "monte-dourado" && (
+              <div style={{ ...card, marginBottom: 10, overflow: "hidden", ...fi(50) }}>
+                <div onClick={() => setLiveBrand("monte-dourado")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: mob ? "12px 14px" : "14px 16px", borderBottom: `1px solid ${C.glassBd}`, borderLeft: "3px solid #C4A76C", cursor: "pointer", transition: "background 0.15s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#C4A76C08"} onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "#C4A76C18", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Mountain size={16} color="#C4A76C" strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: C.text, letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Monte Dourado</div>
+                      <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>@monte.dourado · {getPeriodLabel(period)} · clique para ver ao vivo →</div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 8, color: "#C4A76C", background: "#C4A76C12", padding: "3px 8px", borderRadius: 4, border: "1px solid #C4A76C25", fontFamily: "'Gotham',sans-serif" }}>Marca institucional</span>
+                </div>
+                <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
+                    {(getKpis("monte-dourado", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="monte-dourado" />)}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
+                    {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
+                      return <div style={{ ...card, padding: "12px 10px 6px" }}>
+                        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Alcance</div>
+                        <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="md_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#C4A76C" stopOpacity={0.25}/><stop offset="100%" stopColor="#C4A76C" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#C4A76C" strokeWidth={2} fill="url(#md_a)" dot={false} activeDot={{ r: 3, fill: "#C4A76C" }}/></AreaChart></ResponsiveContainer>
+                      </div>;
+                    })()}
+                    {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_views`] || 0 }));
+                      return <div style={{ ...card, padding: "12px 10px 6px" }}>
+                        <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Visualizações</div>
+                        <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="md_v" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#C4A76C" stopOpacity={0.25}/><stop offset="100%" stopColor="#C4A76C" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#C4A76C" strokeWidth={2} fill="url(#md_v)" dot={false} activeDot={{ r: 3, fill: "#C4A76C" }}/></AreaChart></ResponsiveContainer>
+                      </div>;
+                    })()}
+                  </div>
+                </div>
+              </div>
             )}
 
                         {/* ============================================
