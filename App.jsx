@@ -1114,7 +1114,7 @@ function DateRangeSelector({ dateRange, setDateRange, C, mob }) {
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-          <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 16, zIndex: 50, minWidth: 280, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+          <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 16, zIndex: 50, minWidth: 280, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
             <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4, fontFamily: "'Marisa',serif" }}>Histórico Meta Ads</div>
             <div style={{ fontSize: 10, color: C.mut, marginBottom: 10, fontFamily: "'Gotham',sans-serif", lineHeight: 1.4 }}>Quanto puxar do passado em <strong>campanhas de Ads</strong>. Não afeta dados orgânicos.</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 16 }}>
