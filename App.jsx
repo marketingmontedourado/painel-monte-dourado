@@ -465,14 +465,7 @@ function YearSelect({ period, setPeriod, mob, C }) {
   </div>;
 }
 
-function ChartFilters({ brand, setBrand, period, setPeriod, mob, C }) {
-  return <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
-    <PeriodSelect period={period} setPeriod={setPeriod} mob={mob} C={C} />
-    <YearSelect period={period} setPeriod={setPeriod} mob={mob} C={C} />
-    <div style={{ width: 1, height: 16, background: C.glassBd }} />
-    <BrandPills brand={brand} setBrand={setBrand} mob={mob} C={C} />
-  </div>;
-}
+// (ChartFilters removido — componente não utilizado, código morto)
 
 function Logo({lc, w}) {
   return <svg viewBox="140 460 800 150" style={{width: w || 140, height: (w||140)*0.19}} fill="none">
@@ -1114,6 +1107,7 @@ function DateRangeSelector({ dateRange, setDateRange, C, mob }) {
     <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 6 }}>
       <button onClick={() => setOpen(!open)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "transparent", border: `1px solid ${C.glassBd}`, borderRadius: 8, cursor: "pointer", color: C.text, fontSize: 11, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.04em" }}>
         <CalendarDays size={13} color={C.dourado} strokeWidth={1.5} />
+        <span style={{ fontSize: 9, color: C.mut, marginRight: 2, letterSpacing: "0.08em", textTransform: "uppercase" }}>Hist. Ads:</span>
         <span>{activePreset ? activePreset.label : `${fmtBr(dateRange.since)} → ${fmtBr(dateRange.until)}`}</span>
         <ChevronDown size={11} color={C.mut} strokeWidth={2} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
       </button>
@@ -1121,7 +1115,8 @@ function DateRangeSelector({ dateRange, setDateRange, C, mob }) {
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
           <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: 16, zIndex: 50, minWidth: 280, boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10, fontFamily: "'Marisa',serif" }}>Período rápido</div>
+            <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4, fontFamily: "'Marisa',serif" }}>Histórico Meta Ads</div>
+            <div style={{ fontSize: 10, color: C.mut, marginBottom: 10, fontFamily: "'Gotham',sans-serif", lineHeight: 1.4 }}>Quanto puxar do passado em <strong>campanhas de Ads</strong>. Não afeta dados orgânicos.</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 16 }}>
               {presets.map(p => (
                 <button key={p.id} onClick={() => { setDateRange({ since: p.since, until: p.until }); setOpen(false); }} style={{ padding: "8px 10px", background: activePreset?.id === p.id ? C.dourado + "22" : "transparent", border: `1px solid ${activePreset?.id === p.id ? C.dourado : C.glassBd}`, borderRadius: 6, cursor: "pointer", color: activePreset?.id === p.id ? C.dourado : C.text, fontSize: 11, fontFamily: "'Gotham',sans-serif", letterSpacing: "0.04em", textTransform: "uppercase" }}>{p.label}</button>
@@ -1188,7 +1183,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   // Drill-down ao vivo dentro da aba Empreendimentos (clica no card → abre LiveBrandView)
   const [liveBrand, setLiveBrand] = useState(null);
   const [period, setPeriod] = useState(allPeriods[allPeriods.length - 1]);
-  const [menu, setMenu] = useState(false);
+  // (state `menu` removido junto com o slide-over de filtros)
   const [ready, setReady] = useState(false);
   useEffect(() => { const t = setTimeout(() => setReady(true), 80); return () => clearTimeout(t); }, []);
   const fi = d => ({ opacity: ready ? 1 : 0, transform: ready ? "translateY(0)" : "translateY(8px)", transition: `all 0.5s cubic-bezier(.4,0,.2,1) ${d}ms` });
@@ -1371,10 +1366,6 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
             {mob && <button onClick={toggle} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 8px", cursor: "pointer", color: C.sec, display: "flex", alignItems: "center" }}>{mode === "dark" ? <Sun size={14} color={C.dourado} /> : <Moon size={14} color={C.dourado} />}</button>}
             {mob && <button onClick={onSwitch} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 9, color: C.dourado, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Sair</button>}
             <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
-            <button onClick={() => setMenu(!menu)} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 10px", cursor: "pointer", color: C.sec, display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
-              <Menu size={14} color={C.sec} strokeWidth={1.5} />
-              {!mob && "Filtros"}
-            </button>
           </div>
         </header>
 
@@ -1385,30 +1376,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
           ))}
         </div>}
 
-        {/* FILTER PANEL (slide-over) */}
-        {menu && <div onClick={() => setMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 39, background: "rgba(0,0,0,0.6)" }} />}
-        <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: mob ? "80%" : "280px", zIndex: 40, background: C.card, borderLeft: `1px solid ${C.glassBd}`, padding: "16px 14px", overflowY: "auto", transform: menu ? "translateX(0)" : "translateX(100%)", transition: "transform 0.25s ease" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <span style={{ fontSize: 11, color: C.dourado, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Filtros</span>
-            <button onClick={() => setMenu(false)} style={{ color: C.mut, fontSize: 18, cursor: "pointer", background: "none", border: "none", lineHeight: 1 }}>&times;</button>
-          </div>
-          {tab === "empreendimentos" && <>
-            <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6, fontFamily: "'Gotham',sans-serif" }}>Empreendimento</div>
-            {[{ id: null, name: "Todos", color: C.dourado }, ...empBrands].map(b => (
-              <button key={b.id||"all"} onClick={() => { setBrand(b.id); setMenu(false); }} style={{ width: "100%", padding: "10px 12px", marginBottom: 4, borderRadius: 6, background: (brand === b.id || (!brand && !b.id)) ? "rgba(255,255,255,0.04)" : "transparent", color: (brand === b.id || (!brand && !b.id)) ? C.text : C.sec, border: `1px solid ${(brand === b.id || (!brand && !b.id)) ? (b.color || C.dourado) + "40" : "transparent"}`, cursor: "pointer", textAlign: "left", fontSize: 11, letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 8, fontFamily: "'Gotham',sans-serif" }}>
-                {b.color && b.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: b.color }} />}
-                {b.name}
-                {b.tag && <span style={{ fontSize: 7, color: C.mut, marginLeft: "auto" }}>{b.tag}</span>}
-              </button>
-            ))}
-            <div style={{ height: 1, background: C.glassBd, margin: "10px 0" }} />
-          </>}
-          <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6, fontFamily: "'Gotham',sans-serif" }}>Anual</div>
-          {years.map(y => <button key={y} onClick={() => { setPeriod(`anual-${y}`); setMenu(false); }} style={{ width: "100%", padding: "8px 12px", marginBottom: 3, borderRadius: 6, background: period === `anual-${y}` ? C.dourado + "15" : "transparent", color: period === `anual-${y}` ? C.dourado : C.sec, border: "none", cursor: "pointer", textAlign: "left", fontSize: 11, fontFamily: "'Gotham',sans-serif" }}>{y} {period === `anual-${y}` && "\u2713"}</button>)}
-          <div style={{ height: 1, background: C.glassBd, margin: "10px 0" }} />
-          <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6, fontFamily: "'Gotham',sans-serif" }}>Mensal</div>
-          {[...allPeriods].reverse().map(pk => <button key={pk} onClick={() => { setPeriod(pk); setMenu(false); }} style={{ width: "100%", padding: "8px 12px", marginBottom: 2, borderRadius: 6, background: period === pk ? C.dourado + "15" : "transparent", color: period === pk ? C.dourado : C.sec, border: "none", cursor: "pointer", textAlign: "left", fontSize: 11, fontFamily: "'Gotham',sans-serif" }}>{periodLabels[pk] || pk} {period === pk && "\u2713"}</button>)}
-        </div>
+        {/* (Slide-over de filtros removido \u2014 duplicava o ABR 26 / ANUAL inline) */}
 
         {/* ===== MAIN CONTENT ===== */}
         <main style={{ flex: 1, padding: mob ? "14px 10px" : "18px 22px", maxWidth: 1360, width: "100%", margin: "0 auto" }}>
@@ -2703,3 +2671,4 @@ export default function App() {
 
   return <SocioView onSwitch={handleLogout} onAdmin={user.role === "admin" ? () => setShowAdmin(true) : null} C={C} mode={mode} toggle={toggle} user={user} />;
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
