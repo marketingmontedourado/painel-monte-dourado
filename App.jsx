@@ -313,7 +313,7 @@ function getGeralAnualKpis(year) {
 
 // Montar dados para gráficos (todas as marcas, todos os meses)
 const chartData = allPeriods.map(pk => {
-  const row = { m: periodLabels[pk] || pk };
+  const row = { pk, m: periodLabels[pk] || pk };
   brands.forEach(b => {
     const d = db[b.id]?.[pk];
     row[`${b.name}_alc`] = d?.alc || 0;
@@ -1378,7 +1378,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {mob && <button onClick={toggle} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 8px", cursor: "pointer", color: C.sec, display: "flex", alignItems: "center" }}>{mode === "dark" ? <Sun size={14} color={C.dourado} /> : <Moon size={14} color={C.dourado} />}</button>}
             {mob && <button onClick={onSwitch} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: "6px 10px", cursor: "pointer", fontSize: 9, color: C.dourado, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>Sair</button>}
-            <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
+            {/* (DateRangeSelector movido pra abaixo do header) */}
           </div>
         </header>
 
