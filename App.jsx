@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import { Sun, Moon, Lock, Menu, ChevronDown, Mountain, Building2, CalendarDays, Instagram, Music2, Youtube, Home, TreePine, Globe, TrendingUp, TrendingDown, Eye, Users, MessageCircle, DollarSign, BarChart3 } from "lucide-react";
 
