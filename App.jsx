@@ -1693,7 +1693,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
           {tab !== "eventos" && tab !== "financeiro" && <>
 
             {/* FILTRO \u00daNICO (substitui ABR 26/ANUAL + HIST. ADS) */}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, ...fi(0) }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, position: "relative", zIndex: 100, ...fi(0) }}>
               <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
             </div>
 
