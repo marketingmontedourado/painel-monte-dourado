@@ -941,10 +941,11 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
       const sumMsgs = actives.reduce((s, c) => s + c.msgs, 0);
       const sumReach = actives.reduce((s, c) => s + c.reach, 0);
       const sumClicks = actives.reduce((s, c) => s + c.clicks, 0);
+      const hasMsgs = actives.some(c => c.msgs > 0); // alguma campanha ativa tem mensagens?
       const leaderSpend = actives.reduce((b, c) => !b || c.spend > b.spend ? c : b, null);
-      const leaderMsgs = actives.reduce((b, c) => !b || c.msgs > b.msgs ? c : b, null);
+      const leaderMsgs = actives.filter(c => c.msgs > 0).reduce((b, c) => !b || c.msgs > b.msgs ? c : b, null);
       const leaderReach = actives.reduce((b, c) => !b || c.reach > b.reach ? c : b, null);
-      const leaderRoi = actives.filter(c => c.spend > 0).reduce((b, c) => {
+      const leaderRoi = actives.filter(c => c.spend > 0 && c.msgs > 0).reduce((b, c) => {
         const roi = c.msgs / c.spend;
         const bestRoi = b ? b.msgs / b.spend : 0;
         return !b || roi > bestRoi ? c : b;
@@ -964,7 +965,7 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "'Gotham',sans-serif" }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${C.glassBd}`, background: "rgba(255,255,255,0.02)" }}>
-                  {["Campanha","Investido","Alcance","Cliques","Msgs","CPC","R$/Msg","ROI"].map((h, i) => (
+                  {["Campanha","Investido","Alcance","Cliques", ...(hasMsgs ? ["Msgs"] : []),"CPC", ...(hasMsgs ? ["R$/Msg","ROI"] : [])].map((h, i) => (
                     <th key={i} style={{ padding: "10px 12px", textAlign: i === 0 ? "left" : "right", fontWeight: 500, color: C.douDim, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 9 }}>{h}</th>
                   ))}
                 </tr>
@@ -981,10 +982,10 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
                       <td style={lead(c.spend, leaderSpend?.id === c.id)}>{fmtBRL(c.spend)} {leaderSpend?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
                       <td style={lead(c.reach, leaderReach?.id === c.id)}>{fmtN(c.reach)} {leaderReach?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
                       <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{fmtN(c.clicks)}</td>
-                      <td style={lead(c.msgs, leaderMsgs?.id === c.id)}>{fmtN(c.msgs)} {leaderMsgs?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
+                      {hasMsgs && <td style={c.msgs > 0 ? lead(c.msgs, leaderMsgs?.id === c.id) : { padding: "10px 12px", textAlign: "right", color: C.mut }}>{c.msgs > 0 ? fmtN(c.msgs) : "—"} {leaderMsgs?.id === c.id && c.msgs > 0 && <span style={{ color: brand.color }}>★</span>}</td>}
                       <td style={lead(cpc || 0, leaderCpc?.id === c.id)}>{cpc != null ? `R$ ${cpc.toFixed(2)}` : "—"} {leaderCpc?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right", color: cpm != null ? C.text : C.mut }}>{cpm != null ? `R$ ${cpm.toFixed(2)}` : "—"}</td>
-                      <td style={lead(roi, leaderRoi?.id === c.id)}>{c.spend > 0 ? roi.toFixed(2) : "—"} {leaderRoi?.id === c.id && <span style={{ color: brand.color }}>★</span>}</td>
+                      {hasMsgs && <td style={{ padding: "10px 12px", textAlign: "right", color: cpm != null ? C.text : C.mut }}>{cpm != null ? `R$ ${cpm.toFixed(2)}` : "—"}</td>}
+                      {hasMsgs && <td style={(c.spend > 0 && c.msgs > 0) ? lead(roi, leaderRoi?.id === c.id) : { padding: "10px 12px", textAlign: "right", color: C.mut }}>{(c.spend > 0 && c.msgs > 0) ? roi.toFixed(2) : "—"} {leaderRoi?.id === c.id && c.msgs > 0 && <span style={{ color: brand.color }}>★</span>}</td>}
                     </tr>
                   );
                 })}
@@ -993,16 +994,16 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
                   <td style={{ padding: "10px 12px", textAlign: "right", color: brand.color, fontFamily: "'Marisa',serif" }}>{fmtBRL(sumSpend)}</td>
                   <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{fmtN(sumReach)}</td>
                   <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{fmtN(sumClicks)}</td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{fmtN(sumMsgs)}</td>
+                  {hasMsgs && <td style={{ padding: "10px 12px", textAlign: "right", color: sumMsgs > 0 ? C.text : C.mut }}>{sumMsgs > 0 ? fmtN(sumMsgs) : "—"}</td>}
                   <td style={{ padding: "10px 12px", textAlign: "right", color: C.mut, fontSize: 10 }}>méd R$ {sumClicks > 0 ? (sumSpend / sumClicks).toFixed(2) : "—"}</td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.mut, fontSize: 10 }}>méd R$ {sumMsgs > 0 ? (sumSpend / sumMsgs).toFixed(2) : "—"}</td>
-                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{sumSpend > 0 ? (sumMsgs / sumSpend).toFixed(2) : "—"}</td>
+                  {hasMsgs && <td style={{ padding: "10px 12px", textAlign: "right", color: C.mut, fontSize: 10 }}>méd R$ {sumMsgs > 0 ? (sumSpend / sumMsgs).toFixed(2) : "—"}</td>}
+                  {hasMsgs && <td style={{ padding: "10px 12px", textAlign: "right", color: (sumSpend > 0 && sumMsgs > 0) ? C.text : C.mut }}>{(sumSpend > 0 && sumMsgs > 0) ? (sumMsgs / sumSpend).toFixed(2) : "—"}</td>}
                 </tr>
               </tbody>
             </table>
           </div>
           <div style={{ padding: mob ? "8px 14px 14px" : "10px 18px 16px", fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>
-            <span style={{ color: brand.color }}>★</span> líder da métrica · ROI = mensagens por R$ investido · CPC = custo por clique
+            <span style={{ color: brand.color }}>★</span> líder da métrica · CPC = custo por clique{hasMsgs ? <> · ROI = mensagens por R$ investido · <span style={{ color: C.mut }}>— = métrica não se aplica a essa campanha</span></> : <> · <span style={{ color: C.mut }}>colunas de mensagens ocultas — objetivo das campanhas não é conversa</span></>}
           </div>
         </div>
       );
