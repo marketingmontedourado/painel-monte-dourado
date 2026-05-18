@@ -1183,6 +1183,22 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   // Drill-down ao vivo dentro da aba Empreendimentos (clica no card → abre LiveBrandView)
   const [liveBrand, setLiveBrand] = useState(null);
   const [period, setPeriod] = useState(allPeriods[allPeriods.length - 1]);
+
+  // Filtrar chartData baseado no dateRange (mês inicial e final do range)
+  const filteredChartData = useMemo(() => {
+    const sinceMonth = (dateRange.since || "").slice(0, 7);
+    const untilMonth = (dateRange.until || "").slice(0, 7);
+    if (!sinceMonth || !untilMonth) return chartData;
+    return chartData.filter(r => r.pk >= sinceMonth && r.pk <= untilMonth);
+  }, [dateRange.since, dateRange.until]);
+
+  // Sincronizar period com o último mês dentro do dateRange (pra cards usarem o mês correto)
+  useEffect(() => {
+    const untilMonth = (dateRange.until || "").slice(0, 7);
+    if (allPeriods.includes(untilMonth) && untilMonth !== period && !period.startsWith("anual-")) {
+      setPeriod(untilMonth);
+    }
+  }, [dateRange.until]);
   // (state `menu` removido junto com o slide-over de filtros)
   const [ready, setReady] = useState(false);
   useEffect(() => { const t = setTimeout(() => setReady(true), 80); return () => clearTimeout(t); }, []);
@@ -1200,10 +1216,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   const activeBrand = tab === "monte-dourado" ? "monte-dourado" : brand;
 
   // Dropdown state for period
-  const [pOpen, setPOpen] = useState(false);
-  const [yOpen, setYOpen] = useState(false);
-  useEffect(() => { if (!pOpen) return; const h = e => { if (!e.target.closest("[data-psel]")) setPOpen(false); }; document.addEventListener("click", h); return () => document.removeEventListener("click", h); }, [pOpen]);
-  useEffect(() => { if (!yOpen) return; const h = e => { if (!e.target.closest("[data-ysel]")) setYOpen(false); }; document.addEventListener("click", h); return () => document.removeEventListener("click", h); }, [yOpen]);
+  // (pOpen/yOpen removidos junto com os dropdowns ABR 26/ANUAL inline)
   const years = [...new Set(allPeriods.map(pk => pk.split("-")[0]))].sort().reverse();
   const isAnual = period?.startsWith("anual-");
 
@@ -1286,7 +1299,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   // === CHART SECTION ===
   const ChartSection = ({ title, suffix, id }) => {
     const visBrands = tab === "monte-dourado" ? [brands[0]] : (brand ? empBrands.filter(b => b.id === brand) : empBrands);
-    const data = chartData.map(r => { const row = { m: r.m }; visBrands.forEach(b => { row[b.name] = r[`${b.name}${suffix}`] || 0; }); return row; });
+    const data = filteredChartData.map(r => { const row = { m: r.m }; visBrands.forEach(b => { row[b.name] = r[`${b.name}${suffix}`] || 0; }); return row; });
     return (
       <div style={{ ...card, padding: mob ? "14px 10px 8px" : "16px 14px 10px" }}>
         <div style={{ fontSize: 10, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10, fontFamily: "'Gotham',sans-serif" }}>{title}</div>
@@ -1679,26 +1692,9 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
           {/* === ABAS MONTE DOURADO / EMPREENDIMENTOS === */}
           {tab !== "eventos" && tab !== "financeiro" && <>
 
-            {/* PERIOD FILTERS */}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, position: "relative", zIndex: (pOpen || yOpen) ? 50 : 1, ...fi(0) }}>
-              <div data-psel style={{ position: "relative", zIndex: pOpen ? 20 : 1 }}>
-                <button onClick={() => setPOpen(!pOpen)} style={{ padding: "6px 12px", fontSize: 10, borderRadius: 6, border: `1px solid ${C.glassBd}`, background: "rgba(255,255,255,0.03)", color: C.text, cursor: "pointer", letterSpacing: "0.05em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
-                  {getPeriodLabel(period)}
-                  <ChevronDown size={10} color={C.mut} style={{ transform: pOpen ? "rotate(180deg)" : "none", transition: "0.2s" }} />
-                </button>
-                {pOpen && <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 8, padding: 4, minWidth: 130, maxHeight: 260, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 30 }}>
-                  {[...allPeriods].reverse().map(pk => <button key={pk} onClick={() => { setPeriod(pk); setPOpen(false); }} style={{ display: "block", width: "100%", padding: "7px 10px", fontSize: 10, color: period === pk ? C.dourado : C.sec, background: period === pk ? C.dourado + "12" : "transparent", border: "none", borderRadius: 4, cursor: "pointer", textAlign: "left", fontFamily: "'Gotham',sans-serif" }}>{periodLabels[pk]} {period === pk && "\u2713"}</button>)}
-                </div>}
-              </div>
-              <div data-ysel style={{ position: "relative", zIndex: yOpen ? 20 : 1 }}>
-                <button onClick={() => setYOpen(!yOpen)} style={{ padding: "6px 12px", fontSize: 10, borderRadius: 6, border: `1px solid ${isAnual ? C.dourado + "40" : C.glassBd}`, background: isAnual ? C.dourado + "10" : "rgba(255,255,255,0.03)", color: isAnual ? C.dourado : C.mut, cursor: "pointer", letterSpacing: "0.05em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
-                  {isAnual ? `Anual ${period.split("-")[1]}` : "Anual"}
-                  <ChevronDown size={10} color={isAnual ? C.dourado : C.mut} style={{ transform: yOpen ? "rotate(180deg)" : "none", transition: "0.2s" }} />
-                </button>
-                {yOpen && <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 8, padding: 4, minWidth: 100, boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 30 }}>
-                  {years.map(y => <button key={y} onClick={() => { setPeriod(`anual-${y}`); setYOpen(false); }} style={{ display: "block", width: "100%", padding: "7px 10px", fontSize: 10, color: period === `anual-${y}` ? C.dourado : C.sec, background: period === `anual-${y}` ? C.dourado + "12" : "transparent", border: "none", borderRadius: 4, cursor: "pointer", textAlign: "left", fontFamily: "'Gotham',sans-serif" }}>{y} {period === `anual-${y}` && "\u2713"}</button>)}
-                </div>}
-              </div>
+            {/* FILTRO \u00daNICO (substitui ABR 26/ANUAL + HIST. ADS) */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, ...fi(0) }}>
+              <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
             </div>
 
             {/* ============================================
@@ -1730,13 +1726,13 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                     {(getKpis("monte-dourado", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="monte-dourado" />)}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
-                    {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
+                    {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
                       return <div style={{ ...card, padding: "12px 10px 6px" }}>
                         <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Alcance</div>
                         <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="md_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#C4A76C" stopOpacity={0.25}/><stop offset="100%" stopColor="#C4A76C" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#C4A76C" strokeWidth={2} fill="url(#md_a)" dot={false} activeDot={{ r: 3, fill: "#C4A76C" }}/></AreaChart></ResponsiveContainer>
                       </div>;
                     })()}
-                    {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_views`] || 0 }));
+                    {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_views`] || 0 }));
                       return <div style={{ ...card, padding: "12px 10px 6px" }}>
                         <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Visualizações</div>
                         <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="md_v" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#C4A76C" stopOpacity={0.25}/><stop offset="100%" stopColor="#C4A76C" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#C4A76C" strokeWidth={2} fill="url(#md_v)" dot={false} activeDot={{ r: 3, fill: "#C4A76C" }}/></AreaChart></ResponsiveContainer>
@@ -1779,13 +1775,13 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                       {(getKpis("vila-chapeu", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="vila-chapeu" />)}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
-                      {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
+                      {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
                         return <div style={{ ...card, padding: "12px 10px 6px" }}>
                           <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Alcance</div>
                           <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_a" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_a)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
                         </div>;
                       })()}
-                      {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = chartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_views`] || 0 }));
+                      {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_views`] || 0 }));
                         return <div style={{ ...card, padding: "12px 10px 6px" }}>
                           <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Visualizações</div>
                           <ResponsiveContainer width="100%" height={150}><AreaChart data={data}><defs><linearGradient id="vc_v" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#7A9BBF" stopOpacity={0.25}/><stop offset="100%" stopColor="#7A9BBF" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.10)" vertical={false}/><XAxis dataKey="m" tick={{ fill: C.mut, fontSize: mob ? 7 : 9 }} axisLine={false} tickLine={false} interval={mob ? 1 : 0}/><YAxis tick={{ fill: C.mut, fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={fmt} width={36}/><Tooltip content={<Tip/>}/><Area type="monotone" dataKey={visBrands[0]?.name} stroke="#7A9BBF" strokeWidth={2} fill="url(#vc_v)" dot={false} activeDot={{ r: 3, fill: "#7A9BBF" }}/></AreaChart></ResponsiveContainer>
