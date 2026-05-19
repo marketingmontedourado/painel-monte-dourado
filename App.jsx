@@ -1429,11 +1429,12 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
           {tab === "financeiro" && (() => {
             // Consolidar dados financeiros de todas as marcas
             const finBrands = ["monte-dourado", "vila-morro"];
-            const finMonths = [...new Set(finBrands.flatMap(bid => allPeriods.filter(pk => db[bid]?.[pk]?.inv > 0)))].sort();
+            const finPeriodsInRange = filterPeriodsInRange(allPeriods, dateRange);
+            const finMonths = [...new Set(finBrands.flatMap(bid => finPeriodsInRange.filter(pk => db[bid]?.[pk]?.inv > 0)))].sort();
             
             // Totais gerais
             let totalInv=0, totalMeta=0, totalGoogle=0, totalSeg=0, totalMsgs=0;
-            finBrands.forEach(bid => allPeriods.forEach(pk => {
+            finBrands.forEach(bid => finPeriodsInRange.forEach(pk => {
               const d = db[bid]?.[pk]; if (!d) return;
               totalInv+=d.inv||0; totalMeta+=d.invMeta||0; totalGoogle+=d.invGoogle||0; totalSeg+=d.invSeg||0; totalMsgs+=d.msgs||0;
             }));
@@ -1441,7 +1442,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
             // Totais por marca
             const brandTotals = finBrands.map(bid => {
               let inv=0, meta=0, google=0, seg=0, msgs=0;
-              allPeriods.forEach(pk => { const d=db[bid]?.[pk]; if(!d) return; inv+=d.inv||0; meta+=d.invMeta||0; google+=d.invGoogle||0; seg+=d.invSeg||0; msgs+=d.msgs||0; });
+              finPeriodsInRange.forEach(pk => { const d=db[bid]?.[pk]; if(!d) return; inv+=d.inv||0; meta+=d.invMeta||0; google+=d.invGoogle||0; seg+=d.invSeg||0; msgs+=d.msgs||0; });
               return { id: bid, name: brands.find(b=>b.id===bid)?.name||bid, color: brands.find(b=>b.id===bid)?.color||"#aaa", inv, meta, google, seg, msgs };
             });
 
@@ -1727,9 +1728,9 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                 </div>
               </div>
 
-              {/* Custo por mensagem mensal - Vila do Morro */}
+              {/* Custo por mensagem mensal - Vila do Morro (no range) */}
               {(() => {
-                const msgsMonths = allPeriods.filter(pk => db["vila-morro"]?.[pk]?.msgs > 0);
+                const msgsMonths = finPeriodsInRange.filter(pk => db["vila-morro"]?.[pk]?.msgs > 0);
                 if (!msgsMonths.length) return null;
                 const msgsChart = msgsMonths.map(pk => {
                   const d = db["vila-morro"][pk];
@@ -1766,10 +1767,10 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                 {/* Vila do Morro — card + gráfico investimento vs mensagens */}
                 {(() => {
                   let inv=0, msgs=0, meta=0, google=0, seg=0;
-                  allPeriods.forEach(pk => { const d=db["vila-morro"]?.[pk]; if(!d) return; inv+=d.inv||0; msgs+=d.msgs||0; meta+=d.invMeta||0; google+=d.invGoogle||0; seg+=d.invSeg||0; });
+                  finPeriodsInRange.forEach(pk => { const d=db["vila-morro"]?.[pk]; if(!d) return; inv+=d.inv||0; msgs+=d.msgs||0; meta+=d.invMeta||0; google+=d.invGoogle||0; seg+=d.invSeg||0; });
                   const custoMsg = msgs > 0 ? inv / msgs : 0;
-                  const mesesAds = allPeriods.filter(pk => db["vila-morro"]?.[pk]?.inv > 0).length;
-                  const vmChart = allPeriods.filter(pk => db["vila-morro"]?.[pk]?.inv > 0).map(pk => {
+                  const mesesAds = finPeriodsInRange.filter(pk => db["vila-morro"]?.[pk]?.inv > 0).length;
+                  const vmChart = finPeriodsInRange.filter(pk => db["vila-morro"]?.[pk]?.inv > 0).map(pk => {
                     const d = db["vila-morro"][pk];
                     return { m: periodLabels[pk], inv: d.inv||0, msgs: d.msgs||0, custo: d.msgs > 0 ? +(d.inv/d.msgs).toFixed(1) : 0 };
                   });
