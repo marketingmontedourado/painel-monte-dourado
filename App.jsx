@@ -576,6 +576,23 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
   const momMsgs = lastMonth && prevMonth ? mom(lastMonth.msgs, prevMonth.msgs) : null;
   const momReach = lastMonth && prevMonth ? mom(lastMonth.reach, prevMonth.reach) : null;
 
+  // Variação mensal dos KPIs de eficiência (último mês vs anterior)
+  const lastCpMsg = lastMonth && lastMonth.msgs > 0 ? lastMonth.spend / lastMonth.msgs : null;
+  const prevCpMsg = prevMonth && prevMonth.msgs > 0 ? prevMonth.spend / prevMonth.msgs : null;
+  const momCpMsg = lastCpMsg != null && prevCpMsg != null ? mom(lastCpMsg, prevCpMsg) : null;
+
+  const lastCpm = lastMonth && lastMonth.impressions > 0 ? (lastMonth.spend / lastMonth.impressions) * 1000 : null;
+  const prevCpm = prevMonth && prevMonth.impressions > 0 ? (prevMonth.spend / prevMonth.impressions) * 1000 : null;
+  const momCpm = lastCpm != null && prevCpm != null ? mom(lastCpm, prevCpm) : null;
+
+  const lastCpc = lastMonth && lastMonth.clicks > 0 ? lastMonth.spend / lastMonth.clicks : null;
+  const prevCpc = prevMonth && prevMonth.clicks > 0 ? prevMonth.spend / prevMonth.clicks : null;
+  const momCpc = lastCpc != null && prevCpc != null ? mom(lastCpc, prevCpc) : null;
+
+  const lastCtr = lastMonth && lastMonth.impressions > 0 ? (lastMonth.clicks / lastMonth.impressions) * 100 : null;
+  const prevCtr = prevMonth && prevMonth.impressions > 0 ? (prevMonth.clicks / prevMonth.impressions) * 100 : null;
+  const momCtr = lastCtr != null && prevCtr != null ? mom(lastCtr, prevCtr) : null;
+
   const bestRoiMonth = monthsAds.filter(m => m.spend > 0).reduce((best, m) => {
     const roi = m.msgs / m.spend;
     const bestRoi = best ? best.msgs / best.spend : 0;
@@ -822,7 +839,7 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
           <div style={{ background: C.card, padding: mob ? "12px 14px" : "14px 18px" }}>
             <div style={lab}>Custo / mensagem</div>
             <div style={val}>{totalMsgs > 0 ? `R$ ${costPerMsg.toFixed(2)}` : "—"}</div>
-            <div style={sec}>média geral</div>
+            <div style={sec}>{momCpMsg != null ? <>último mês: <span style={{ color: momCpMsg <= 0 ? C.up : C.down }}>{fmtPct(momCpMsg)}</span></> : "média geral"}</div>
           </div>
         </div>
 
@@ -830,17 +847,17 @@ function LiveBrandView({ brandId, liveData, C, mob, fmt }) {
           <div style={{ background: C.card, padding: mob ? "10px 14px" : "12px 18px" }}>
             <div style={lab}>CPM</div>
             <div style={{ ...val, fontSize: mob ? 16 : 18 }}>{cpm > 0 ? `R$ ${cpm.toFixed(2)}` : "—"}</div>
-            <div style={sec}>por mil impressões</div>
+            <div style={sec}>{momCpm != null ? <>último mês: <span style={{ color: momCpm <= 0 ? C.up : C.down }}>{fmtPct(momCpm)}</span></> : "por mil impressões"}</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "10px 14px" : "12px 18px" }}>
             <div style={lab}>CPC</div>
             <div style={{ ...val, fontSize: mob ? 16 : 18 }}>{cpc > 0 ? `R$ ${cpc.toFixed(2)}` : "—"}</div>
-            <div style={sec}>por clique</div>
+            <div style={sec}>{momCpc != null ? <>último mês: <span style={{ color: momCpc <= 0 ? C.up : C.down }}>{fmtPct(momCpc)}</span></> : "por clique"}</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "10px 14px" : "12px 18px" }}>
             <div style={lab}>CTR</div>
             <div style={{ ...val, fontSize: mob ? 16 : 18 }}>{ctr > 0 ? `${ctr.toFixed(2)}%` : "—"}</div>
-            <div style={sec}>taxa de clique</div>
+            <div style={sec}>{momCtr != null ? <>último mês: <span style={{ color: momCtr >= 0 ? C.up : C.down }}>{fmtPct(momCtr)}</span></> : "taxa de clique"}</div>
           </div>
           <div style={{ background: C.card, padding: mob ? "10px 14px" : "12px 18px" }}>
             <div style={lab}>Melhor ROI</div>
@@ -1444,7 +1461,98 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
             // Custo por mensagem
             const custoMsg = totalMsgs > 0 ? (totalInv / totalMsgs) : 0;
 
+            // ===== DADOS AO VIVO via Meta API =====
+            const currentMonthStr = new Date().toISOString().slice(0, 7); // ex: "2026-05"
+            const liveAdsRows = liveData?.ads?.data || [];
+            const liveCurrentMonth = liveAdsRows.filter(r => r.month === currentMonthStr);
+            const liveSpendMonth = liveCurrentMonth.reduce((s, r) => s + (r.spend || 0), 0);
+            const liveMsgsMonth = liveCurrentMonth.reduce((s, r) => s + (r.messages || 0), 0);
+            const liveCpMsgMonth = liveMsgsMonth > 0 ? liveSpendMonth / liveMsgsMonth : 0;
+            const liveCampaignsMonthIds = new Set(liveCurrentMonth.map(r => r.campaign_id));
+
+            // Agrupar campanhas ATIVAS (todas as marcas)
+            const activeAgg = {};
+            liveAdsRows.forEach(r => {
+              if (r.campaign_status !== "ACTIVE") return;
+              const k = r.campaign_id;
+              if (!activeAgg[k]) {
+                activeAgg[k] = {
+                  id: k,
+                  name: r.campaign_name || "(sem nome)",
+                  brand: brandFromCampaign(r.campaign_name) || "monte-dourado",
+                  spend: 0, msgs: 0, reach: 0, clicks: 0,
+                };
+              }
+              const c = activeAgg[k];
+              c.spend += r.spend || 0;
+              c.msgs += r.messages || 0;
+              c.reach += r.reach || 0;
+              c.clicks += r.clicks || 0;
+            });
+            const activeCampaigns = Object.values(activeAgg).sort((a, b) => b.spend - a.spend);
+            // Agrupar por marca
+            const activeByBrand = {};
+            activeCampaigns.forEach(c => {
+              if (!activeByBrand[c.brand]) activeByBrand[c.brand] = [];
+              activeByBrand[c.brand].push(c);
+            });
+            const liveDayProgress = (() => {
+              const d = new Date();
+              const total = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+              return { current: d.getDate(), total };
+            })();
+            const monthLabelLong = (() => {
+              const meses = ["JANEIRO","FEVEREIRO","MARÇO","ABRIL","MAIO","JUNHO","JULHO","AGOSTO","SETEMBRO","OUTUBRO","NOVEMBRO","DEZEMBRO"];
+              const d = new Date();
+              return `${meses[d.getMonth()]} ${d.getFullYear()}`;
+            })();
+            // Reduzir nome de campanha pra exibição (cortar prefixo [MDZ] [ID] redundante)
+            const shortCampName = (n) => {
+              if (!n) return "(sem nome)";
+              // Remove "[MDZ] [N] " do começo
+              return n.replace(/^\[MDZ\]\s*\[\d+\]\s*/i, "");
+            };
+
             return <div style={{ ...fi(0) }}>
+              {/* ===== MÊS CORRENTE · AO VIVO ===== */}
+              {liveAdsRows.length > 0 && (
+                <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 12px" : "18px 18px", borderLeft: `3px solid ${C.dourado}`, marginTop: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px #22c55e" }} />
+                      <div>
+                        <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 2 }}>◈ Mês corrente · ao vivo</div>
+                        <div style={{ fontSize: mob ? 14 : 16, color: C.text, fontFamily: "'Marisa',serif", letterSpacing: "0.04em", textTransform: "uppercase" }}>{monthLabelLong}</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif", textAlign: "right" }}>
+                      <div>Parcial · dia {liveDayProgress.current} de {liveDayProgress.total}</div>
+                      <div style={{ fontSize: 8, marginTop: 2 }}>Atualiza via Meta API</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
+                    <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 12px", borderRadius: 6 }}>
+                      <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Investido</div>
+                      <div style={{ fontSize: mob ? 20 : 24, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.dourado }}>R$ {fmt(Math.round(liveSpendMonth))}</div>
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 12px", borderRadius: 6 }}>
+                      <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Mensagens</div>
+                      <div style={{ fontSize: mob ? 20 : 24, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>{liveMsgsMonth.toLocaleString("pt-BR")}</div>
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 12px", borderRadius: 6 }}>
+                      <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Custo / msg</div>
+                      <div style={{ fontSize: mob ? 20 : 24, fontWeight: 500, fontFamily: "'Marisa',serif", color: liveCpMsgMonth > 0 && liveCpMsgMonth <= 30 ? "#22c55e" : liveCpMsgMonth > 30 ? "#ef4444" : C.mut }}>
+                        {liveCpMsgMonth > 0 ? `R$ ${liveCpMsgMonth.toFixed(2).replace(".",",")}` : "—"}
+                      </div>
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,0.02)", padding: "12px 12px", borderRadius: 6 }}>
+                      <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 6 }}>Campanhas ativas</div>
+                      <div style={{ fontSize: mob ? 20 : 24, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text }}>{activeCampaigns.length}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* KPIs financeiros */}
               <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8, marginBottom: 12, marginTop: 10 }}>
                 <div style={{ ...card, padding: "16px 14px" }}>
@@ -1468,6 +1576,84 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                   <div style={{ fontSize: 9, color: C.sec, marginTop: 4, fontFamily: "'Gotham',sans-serif" }}>Monte Dourado + Vila do Morro</div>
                 </div>
               </div>
+
+              {/* ===== CAMPANHAS ATIVAS ===== */}
+              {activeCampaigns.length > 0 && (
+                <div style={{ ...card, marginBottom: 12, padding: 0, overflow: "hidden" }}>
+                  <div style={{ padding: mob ? "14px 14px 12px" : "18px 18px 14px", borderBottom: `1px solid ${C.glassBd}` }}>
+                    <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>◈ Campanhas ativas</div>
+                    <div style={{ fontSize: 13, color: C.text, fontFamily: "'Gotham',sans-serif" }}>{activeCampaigns.length} {activeCampaigns.length === 1 ? "campanha rodando" : "campanhas rodando"} agora · agrupadas por marca</div>
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "'Gotham',sans-serif" }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${C.glassBd}`, background: "rgba(255,255,255,0.02)" }}>
+                          {(() => {
+                            const hasMsgs = activeCampaigns.some(c => c.msgs > 0);
+                            return ["Campanha", "Investido", "Alcance", "Cliques", ...(hasMsgs ? ["Msgs", "Custo/msg"] : [])].map((h, i) => (
+                              <th key={i} style={{ padding: "10px 12px", textAlign: i === 0 ? "left" : "right", fontWeight: 500, color: C.douDim, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 9 }}>{h}</th>
+                            ));
+                          })()}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.keys(activeByBrand).map(brandId => {
+                          const brandInfo = brands.find(b => b.id === brandId);
+                          const camps = activeByBrand[brandId];
+                          const hasMsgs = activeCampaigns.some(c => c.msgs > 0);
+                          const colSpan = 4 + (hasMsgs ? 2 : 0);
+                          const brandTotalSpend = camps.reduce((s, c) => s + c.spend, 0);
+                          const brandTotalMsgs = camps.reduce((s, c) => s + c.msgs, 0);
+                          return [
+                            // Header da marca
+                            <tr key={`h-${brandId}`} style={{ background: (brandInfo?.color || C.dourado) + "0A", borderBottom: `1px solid ${C.glassBd}` }}>
+                              <td colSpan={colSpan} style={{ padding: "8px 12px", color: brandInfo?.color || C.dourado, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Marisa',serif", fontWeight: 600 }}>
+                                ◆ {brandInfo?.name || brandId} · {camps.length} {camps.length === 1 ? "campanha" : "campanhas"} · R$ {fmt(Math.round(brandTotalSpend))}{hasMsgs && brandTotalMsgs > 0 ? ` · ${brandTotalMsgs.toLocaleString("pt-BR")} msgs` : ""}
+                              </td>
+                            </tr>,
+                            // Campanhas da marca
+                            ...camps.map((c, i) => {
+                              const cpMsg = c.msgs > 0 ? c.spend / c.msgs : null;
+                              return (
+                                <tr key={c.id} style={{ borderBottom: `1px solid ${C.borderL}` }}>
+                                  <td style={{ padding: "10px 12px", color: C.text, maxWidth: mob ? 140 : 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={c.name}>{shortCampName(c.name)}</td>
+                                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>R$ {fmt(Math.round(c.spend))}</td>
+                                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{(c.reach || 0).toLocaleString("pt-BR")}</td>
+                                  <td style={{ padding: "10px 12px", textAlign: "right", color: C.text }}>{(c.clicks || 0).toLocaleString("pt-BR")}</td>
+                                  {hasMsgs && <td style={{ padding: "10px 12px", textAlign: "right", color: c.msgs > 0 ? C.text : C.mut }}>{c.msgs > 0 ? c.msgs.toLocaleString("pt-BR") : "—"}</td>}
+                                  {hasMsgs && <td style={{ padding: "10px 12px", textAlign: "right", color: cpMsg != null ? C.text : C.mut }}>{cpMsg != null ? `R$ ${cpMsg.toFixed(2).replace(".",",")}` : "—"}</td>}
+                                </tr>
+                              );
+                            })
+                          ];
+                        })}
+                        {/* TOTAL GERAL */}
+                        {(() => {
+                          const hasMsgs = activeCampaigns.some(c => c.msgs > 0);
+                          const totSpend = activeCampaigns.reduce((s, c) => s + c.spend, 0);
+                          const totReach = activeCampaigns.reduce((s, c) => s + c.reach, 0);
+                          const totClicks = activeCampaigns.reduce((s, c) => s + c.clicks, 0);
+                          const totMsgs = activeCampaigns.reduce((s, c) => s + c.msgs, 0);
+                          const avgCp = totMsgs > 0 ? totSpend / totMsgs : null;
+                          return (
+                            <tr style={{ borderTop: `2px solid ${C.glassBd}`, background: "rgba(255,255,255,0.03)", fontWeight: 600 }}>
+                              <td style={{ padding: "12px", color: C.douDim, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 9, fontFamily: "'Marisa',serif" }}>TOTAL · {activeCampaigns.length} campanhas</td>
+                              <td style={{ padding: "12px", textAlign: "right", color: C.dourado, fontFamily: "'Marisa',serif" }}>R$ {fmt(Math.round(totSpend))}</td>
+                              <td style={{ padding: "12px", textAlign: "right", color: C.text }}>{totReach.toLocaleString("pt-BR")}</td>
+                              <td style={{ padding: "12px", textAlign: "right", color: C.text }}>{totClicks.toLocaleString("pt-BR")}</td>
+                              {hasMsgs && <td style={{ padding: "12px", textAlign: "right", color: totMsgs > 0 ? C.text : C.mut }}>{totMsgs > 0 ? totMsgs.toLocaleString("pt-BR") : "—"}</td>}
+                              {hasMsgs && <td style={{ padding: "12px", textAlign: "right", color: avgCp != null ? C.text : C.mut }}>{avgCp != null ? `R$ ${avgCp.toFixed(2).replace(".",",")}` : "—"}</td>}
+                            </tr>
+                          );
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ padding: mob ? "8px 14px 14px" : "10px 18px 16px", fontSize: 10, color: C.mut, fontFamily: "'Gotham',sans-serif" }}>
+                    Dados em tempo real via Meta Ads API · agrupadas pela taxonomia <code style={{ background: "rgba(255,255,255,0.05)", padding: "1px 5px", borderRadius: 3, fontFamily: "monospace" }}>[MARCA]</code> no nome da campanha
+                  </div>
+                </div>
+              )}
 
               {/* Investimento por marca */}
               <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 12px" : "18px 16px" }}>
