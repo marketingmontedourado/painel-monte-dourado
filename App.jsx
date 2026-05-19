@@ -386,6 +386,78 @@ function getKpis(brandId, periodKey) {
   ];
 }
 
+function filterPeriodsInRange(periods, dateRange) {
+  const sinceMonth = (dateRange?.since || "").slice(0, 7);
+  const untilMonth = (dateRange?.until || "").slice(0, 7);
+  if (!sinceMonth || !untilMonth) return periods;
+  return periods.filter(pk => pk >= sinceMonth && pk <= untilMonth);
+}
+
+function getKpisRange(brandId, dateRange) {
+  const periodsInRange = filterPeriodsInRange(allPeriods, dateRange);
+  if (!periodsInRange.length) {
+    return [{ k: "Sem dados no período", v: "—", p: "Selecione outro range", u: true, noArrow: true }];
+  }
+  const agg = { alc: 0, views: 0, inter: 0, inv: 0, invMeta: 0, invGoogle: 0, invSeg: 0, msgs: 0 };
+  let lastSeg = null;
+  let monthsWithData = 0;
+  periodsInRange.forEach(pk => {
+    const d = db[brandId]?.[pk];
+    if (!d) return;
+    monthsWithData++;
+    agg.alc += d.alc || 0;
+    agg.views += d.views || 0;
+    agg.inter += d.inter || 0;
+    agg.inv += d.inv || 0;
+    agg.invMeta += d.invMeta || 0;
+    agg.invGoogle += d.invGoogle || 0;
+    agg.invSeg += d.invSeg || 0;
+    agg.msgs += d.msgs || 0;
+    if (d.seg) lastSeg = d.seg;
+  });
+  agg.seg = lastSeg;
+
+  if (monthsWithData === 0) {
+    return [{ k: "Aguardando relatório", v: "—", p: `${periodsInRange.length} ${periodsInRange.length === 1 ? "mês" : "meses"} sem dados`, u: true, noArrow: true, _state: "awaiting" }];
+  }
+
+  const sizeMonths = periodsInRange.length;
+  const firstIdx = allPeriods.indexOf(periodsInRange[0]);
+  const prevPeriods = firstIdx > 0 ? allPeriods.slice(Math.max(0, firstIdx - sizeMonths), firstIdx) : [];
+  const prev = { alc: 0, views: 0, inter: 0, inv: 0, msgs: 0 };
+  let prevLastSeg = null;
+  prevPeriods.forEach(pk => {
+    const d = db[brandId]?.[pk]; if (!d) return;
+    prev.alc += d.alc || 0;
+    prev.views += d.views || 0;
+    prev.inter += d.inter || 0;
+    prev.inv += d.inv || 0;
+    prev.msgs += d.msgs || 0;
+    if (d.seg) prevLastSeg = d.seg;
+  });
+  prev.seg = prevLastSeg;
+
+  const pct = (cur, old) => old && cur ? (((cur - old) / old) * 100).toFixed(1) : null;
+  const fmtPct = v => v ? (v > 0 ? `+${v}%` : `${v}%`) : "";
+
+  if (agg.inv > 0 && !agg.seg && !agg.alc) {
+    return [
+      { k: "Investimento", v: `R$ ${fmt(agg.inv)}`, p: fmtPct(pct(agg.inv, prev.inv)), u: agg.inv < prev.inv },
+      { k: "Meta Ads", v: `R$ ${fmt(agg.invMeta)}`, p: "", u: true, noArrow: true },
+      { k: "Google Ads", v: `R$ ${fmt(agg.invGoogle)}`, p: "", u: true, noArrow: true },
+      { k: "Mensagens", v: agg.msgs ? agg.msgs.toLocaleString("pt-BR") : "—", p: fmtPct(pct(agg.msgs, prev.msgs)), u: agg.msgs > prev.msgs },
+    ];
+  }
+  return [
+    { k: "Seguidores", v: agg.seg ? agg.seg.toLocaleString("pt-BR") : "—", p: fmtPct(pct(agg.seg, prev.seg)), u: agg.seg > prev.seg },
+    { k: "Alcance", v: fmt(agg.alc), p: fmtPct(pct(agg.alc, prev.alc)), u: agg.alc > prev.alc },
+    { k: "Visualizações", v: fmt(agg.views), p: fmtPct(pct(agg.views, prev.views)), u: agg.views > prev.views },
+    ...(agg.inv > 0
+      ? [{ k: "Investimento", v: `R$ ${fmt(agg.inv)}`, p: fmtPct(pct(agg.inv, prev.inv)), u: false }]
+      : [{ k: "Interações", v: fmt(agg.inter), p: fmtPct(pct(agg.inter, prev.inter)), u: agg.inter > prev.inter }]),
+  ];
+}
+
 function getGeralKpis(periodKey) {
   let seg=0, alc=0, views=0, inter=0, inv=0, count=0;
   brands.forEach(b => { const d = db[b.id]?.[periodKey]; if(d){ seg+=d.seg||0; alc+=d.alc||0; views+=d.views||0; inter+=d.inter||0; inv+=d.inv||0; if(d.seg||d.alc)count++; }});
@@ -1912,7 +1984,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                 </div>
                 <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                    {(getKpis("monte-dourado", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="monte-dourado" />)}
+                    {(getKpisRange("monte-dourado", dateRange) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="monte-dourado" />)}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
                     {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
@@ -1961,7 +2033,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                   </div>
                   <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                      {(getKpis("vila-chapeu", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="vila-chapeu" />)}
+                      {(getKpisRange("vila-chapeu", dateRange) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="vila-chapeu" />)}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
                       {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
@@ -1998,7 +2070,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                   </div>
                   <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                      {(getKpis("vila-morro", period) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={180 + i * 50} brandId="vila-morro" />)}
+                      {(getKpisRange("vila-morro", dateRange) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={180 + i * 50} brandId="vila-morro" />)}
                     </div>
                     <div style={{ ...card, padding: "12px 10px 6px" }}>
                       <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Investimento mensal</div>
