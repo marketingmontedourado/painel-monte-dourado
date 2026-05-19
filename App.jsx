@@ -393,7 +393,7 @@ function filterPeriodsInRange(periods, dateRange) {
   return periods.filter(pk => pk >= sinceMonth && pk <= untilMonth);
 }
 
-function getKpisRange(brandId, dateRange) {
+function getKpisRange(brandId, dateRange, channel = "all") {
   const periodsInRange = filterPeriodsInRange(allPeriods, dateRange);
   if (!periodsInRange.length) {
     return [{ k: "Sem dados no período", v: "—", p: "Selecione outro range", u: true, noArrow: true }];
@@ -441,6 +441,26 @@ function getKpisRange(brandId, dateRange) {
   const fmtPct = v => v ? (v > 0 ? `+${v}%` : `${v}%`) : "";
 
   if (agg.inv > 0 && !agg.seg && !agg.alc) {
+    if (channel === "organic") return [{ k: "Sem dados orgânicos", v: "—", p: "Marca opera só com ADS", u: true, noArrow: true }];
+    return [
+      { k: "Investimento", v: `R$ ${fmt(agg.inv)}`, p: fmtPct(pct(agg.inv, prev.inv)), u: agg.inv < prev.inv },
+      { k: "Meta Ads", v: `R$ ${fmt(agg.invMeta)}`, p: "", u: true, noArrow: true },
+      { k: "Google Ads", v: `R$ ${fmt(agg.invGoogle)}`, p: "", u: true, noArrow: true },
+      { k: "Mensagens", v: agg.msgs ? agg.msgs.toLocaleString("pt-BR") : "—", p: fmtPct(pct(agg.msgs, prev.msgs)), u: agg.msgs > prev.msgs },
+    ];
+  }
+
+  if (channel === "organic") {
+    if (!agg.seg && !agg.alc) return [{ k: "Sem dados orgânicos no período", v: "—", p: "", u: true, noArrow: true }];
+    return [
+      { k: "Seguidores", v: agg.seg ? agg.seg.toLocaleString("pt-BR") : "—", p: fmtPct(pct(agg.seg, prev.seg)), u: agg.seg > prev.seg },
+      { k: "Alcance", v: fmt(agg.alc), p: fmtPct(pct(agg.alc, prev.alc)), u: agg.alc > prev.alc },
+      { k: "Visualizações", v: fmt(agg.views), p: fmtPct(pct(agg.views, prev.views)), u: agg.views > prev.views },
+      { k: "Interações", v: fmt(agg.inter), p: fmtPct(pct(agg.inter, prev.inter)), u: agg.inter > prev.inter },
+    ];
+  }
+  if (channel === "paid") {
+    if (!agg.inv) return [{ k: "Sem investimento no período", v: "—", p: "Marca 100% orgânica ou sem ADS", u: true, noArrow: true }];
     return [
       { k: "Investimento", v: `R$ ${fmt(agg.inv)}`, p: fmtPct(pct(agg.inv, prev.inv)), u: agg.inv < prev.inv },
       { k: "Meta Ads", v: `R$ ${fmt(agg.invMeta)}`, p: "", u: true, noArrow: true },
@@ -1177,6 +1197,32 @@ function LiveConclusion({ brandId, brand, orgAccount, monthsAds, topCampaigns, t
 /* ============================================================
    DATE RANGE SELECTOR — filtro funcional de período (since → until)
 ============================================================ */
+function ChannelToggle({ channel, setChannel, C, mob }) {
+  const opts = [
+    { id: "all", label: "Tudo" },
+    { id: "organic", label: "Orgânico" },
+    { id: "paid", label: "Pago" },
+  ];
+  return <div style={{ display: "flex", gap: 0, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.glassBd}`, borderRadius: 6, padding: 2 }}>
+    {opts.map(o => (
+      <button key={o.id} onClick={() => setChannel(o.id)} style={{
+        padding: mob ? "5px 10px" : "6px 12px",
+        fontSize: 10,
+        borderRadius: 4,
+        border: "none",
+        background: channel === o.id ? C.dourado + "1F" : "transparent",
+        color: channel === o.id ? C.dourado : C.sec,
+        cursor: "pointer",
+        letterSpacing: "0.05em",
+        textTransform: "uppercase",
+        fontFamily: "'Gotham',sans-serif",
+        fontWeight: channel === o.id ? 600 : 400,
+        transition: "all 0.2s",
+      }}>{o.label}</button>
+    ))}
+  </div>;
+}
+
 function DateRangeSelector({ dateRange, setDateRange, C, mob }) {
   const [open, setOpen] = useState(false);
   const [tempSince, setTempSince] = useState(dateRange.since);
@@ -1238,6 +1284,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   const [liveError, setLiveError] = useState(null);
   const [liveData, setLiveData] = useState(null);
   const [dateRange, setDateRange] = useState({ since: "2025-05-01", until: new Date().toISOString().slice(0, 10) });
+  const [channel, setChannel] = useState("all"); // "all" | "organic" | "paid"
   useEffect(() => {
     let cancelled = false;
     // Helper de fetch autenticado — manda x-md-key (Vite expõe VITE_* no client)
@@ -1587,8 +1634,14 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
             };
 
             return <div style={{ ...fi(0) }}>
+              {/* FILTRO Financeiro (DateRange + Channel) */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, marginTop: 10, position: "relative", zIndex: 100 }}>
+                <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
+                <ChannelToggle channel={channel} setChannel={setChannel} C={C} mob={mob} />
+              </div>
+
               {/* ===== MÊS CORRENTE · AO VIVO ===== */}
-              {liveAdsRows.length > 0 && (
+              {liveAdsRows.length > 0 && channel !== "organic" && (
                 <div style={{ ...card, marginBottom: 12, padding: mob ? "14px 12px" : "18px 18px", borderLeft: `3px solid ${C.dourado}`, marginTop: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1651,7 +1704,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
               </div>
 
               {/* ===== CAMPANHAS ATIVAS ===== */}
-              {activeCampaigns.length > 0 && (
+              {activeCampaigns.length > 0 && channel !== "organic" && (
                 <div style={{ ...card, marginBottom: 12, padding: 0, overflow: "hidden" }}>
                   <div style={{ padding: mob ? "14px 14px 12px" : "18px 18px 14px", borderBottom: `1px solid ${C.glassBd}` }}>
                     <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 4 }}>◈ Campanhas ativas</div>
@@ -1953,9 +2006,10 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
           {/* === ABAS MONTE DOURADO / EMPREENDIMENTOS === */}
           {tab !== "eventos" && tab !== "financeiro" && <>
 
-            {/* FILTRO \u00daNICO (substitui ABR 26/ANUAL + HIST. ADS) */}
+            {/* FILTRO \u00daNICO (DateRange + Channel) */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, position: "relative", zIndex: 100, ...fi(0) }}>
               <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
+              <ChannelToggle channel={channel} setChannel={setChannel} C={C} mob={mob} />
             </div>
 
             {/* ============================================
@@ -1984,7 +2038,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                 </div>
                 <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                    {(getKpisRange("monte-dourado", dateRange) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="monte-dourado" />)}
+                    {(getKpisRange("monte-dourado", dateRange, channel) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="monte-dourado" />)}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
                     {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
@@ -2033,7 +2087,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                   </div>
                   <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                      {(getKpisRange("vila-chapeu", dateRange) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="vila-chapeu" />)}
+                      {(getKpisRange("vila-chapeu", dateRange, channel) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="vila-chapeu" />)}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
                       {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
@@ -2070,7 +2124,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                   </div>
                   <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                      {(getKpisRange("vila-morro", dateRange) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={180 + i * 50} brandId="vila-morro" />)}
+                      {(getKpisRange("vila-morro", dateRange, channel) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={180 + i * 50} brandId="vila-morro" />)}
                     </div>
                     <div style={{ ...card, padding: "12px 10px 6px" }}>
                       <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Investimento mensal</div>
