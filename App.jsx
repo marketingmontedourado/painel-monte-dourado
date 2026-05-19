@@ -393,7 +393,7 @@ function filterPeriodsInRange(periods, dateRange) {
   return periods.filter(pk => pk >= sinceMonth && pk <= untilMonth);
 }
 
-function getKpisRange(brandId, dateRange, channel = "all") {
+function getKpisRange(brandId, dateRange, channel = "all", compareMode = "previous") {
   const periodsInRange = filterPeriodsInRange(allPeriods, dateRange);
   if (!periodsInRange.length) {
     return [{ k: "Sem dados no período", v: "—", p: "Selecione outro range", u: true, noArrow: true }];
@@ -423,7 +423,20 @@ function getKpisRange(brandId, dateRange, channel = "all") {
 
   const sizeMonths = periodsInRange.length;
   const firstIdx = allPeriods.indexOf(periodsInRange[0]);
-  const prevPeriods = firstIdx > 0 ? allPeriods.slice(Math.max(0, firstIdx - sizeMonths), firstIdx) : [];
+  // Calcular período de comparação conforme compareMode
+  let prevPeriods = [];
+  if (compareMode === "off") {
+    prevPeriods = []; // sem comparação
+  } else if (compareMode === "year-ago") {
+    // Mesmo período ano anterior: -12 meses de cada pk
+    prevPeriods = periodsInRange.map(pk => {
+      const [y, m] = pk.split("-");
+      return `${parseInt(y) - 1}-${m}`;
+    }).filter(pk => allPeriods.includes(pk));
+  } else {
+    // "previous" (default): janela de mesmo tamanho logo antes
+    prevPeriods = firstIdx > 0 ? allPeriods.slice(Math.max(0, firstIdx - sizeMonths), firstIdx) : [];
+  }
   const prev = { alc: 0, views: 0, inter: 0, inv: 0, msgs: 0 };
   let prevLastSeg = null;
   prevPeriods.forEach(pk => {
@@ -1197,6 +1210,52 @@ function LiveConclusion({ brandId, brand, orgAccount, monthsAds, topCampaigns, t
 /* ============================================================
    DATE RANGE SELECTOR — filtro funcional de período (since → until)
 ============================================================ */
+function CompareSelect({ compareMode, setCompareMode, C, mob }) {
+  const [open, setOpen] = useState(false);
+  const opts = [
+    { id: "previous", label: "Período anterior", hint: "vs janela de mesmo tamanho logo antes" },
+    { id: "year-ago", label: "Mesmo período ano anterior", hint: "vs 12 meses atrás" },
+    { id: "off", label: "Não comparar", hint: "esconde variação" },
+  ];
+  const current = opts.find(o => o.id === compareMode) || opts[0];
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (!e.target.closest("[data-cmpsel]")) setOpen(false); };
+    document.addEventListener("click", h);
+    return () => document.removeEventListener("click", h);
+  }, [open]);
+  return <div data-cmpsel style={{ position: "relative" }}>
+    <button onClick={() => setOpen(!open)} style={{
+      display: "flex", alignItems: "center", gap: 5,
+      padding: mob ? "5px 10px" : "6px 12px",
+      fontSize: 10, borderRadius: 6,
+      border: `1px solid ${C.glassBd}`,
+      background: "rgba(255,255,255,0.03)",
+      color: compareMode === "off" ? C.mut : C.sec,
+      cursor: "pointer", letterSpacing: "0.05em", textTransform: "uppercase",
+      fontFamily: "'Gotham',sans-serif",
+    }}>
+      <span style={{ fontSize: 9, color: C.mut, marginRight: 2 }}>Comparar:</span>
+      <span>{current.label}</span>
+      <ChevronDown size={10} color={C.mut} style={{ transform: open ? "rotate(180deg)" : "none", transition: "0.2s" }} />
+    </button>
+    {open && <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, background: C.card, border: `1px solid ${C.glassBd}`, borderRadius: 8, padding: 4, minWidth: 240, boxShadow: "0 8px 24px rgba(0,0,0,0.5)", zIndex: 9999 }}>
+      {opts.map(o => (
+        <button key={o.id} onClick={() => { setCompareMode(o.id); setOpen(false); }} style={{
+          display: "block", width: "100%", padding: "8px 10px",
+          fontSize: 11, color: compareMode === o.id ? C.dourado : C.sec,
+          background: compareMode === o.id ? C.dourado + "12" : "transparent",
+          border: "none", borderRadius: 4, cursor: "pointer", textAlign: "left",
+          fontFamily: "'Gotham',sans-serif",
+        }}>
+          <div style={{ fontWeight: compareMode === o.id ? 600 : 400 }}>{o.label} {compareMode === o.id && "✓"}</div>
+          <div style={{ fontSize: 9, color: C.mut, marginTop: 2 }}>{o.hint}</div>
+        </button>
+      ))}
+    </div>}
+  </div>;
+}
+
 function ChannelToggle({ channel, setChannel, C, mob }) {
   const opts = [
     { id: "all", label: "Tudo" },
@@ -1285,6 +1344,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   const [liveData, setLiveData] = useState(null);
   const [dateRange, setDateRange] = useState({ since: "2025-05-01", until: new Date().toISOString().slice(0, 10) });
   const [channel, setChannel] = useState("all"); // "all" | "organic" | "paid"
+  const [compareMode, setCompareMode] = useState("previous"); // "previous" | "year-ago" | "off"
   useEffect(() => {
     let cancelled = false;
     // Helper de fetch autenticado — manda x-md-key (Vite expõe VITE_* no client)
@@ -1638,6 +1698,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, marginTop: 10, position: "relative", zIndex: 100 }}>
                 <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
                 <ChannelToggle channel={channel} setChannel={setChannel} C={C} mob={mob} />
+                <CompareSelect compareMode={compareMode} setCompareMode={setCompareMode} C={C} mob={mob} />
               </div>
 
               {/* ===== MÊS CORRENTE · AO VIVO ===== */}
@@ -2010,6 +2071,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: mob ? 14 : 16, position: "relative", zIndex: 100, ...fi(0) }}>
               <DateRangeSelector dateRange={dateRange} setDateRange={setDateRange} C={C} mob={mob} />
               <ChannelToggle channel={channel} setChannel={setChannel} C={C} mob={mob} />
+              <CompareSelect compareMode={compareMode} setCompareMode={setCompareMode} C={C} mob={mob} />
             </div>
 
             {/* ============================================
@@ -2038,7 +2100,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                 </div>
                 <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                    {(getKpisRange("monte-dourado", dateRange, channel) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="monte-dourado" />)}
+                    {(getKpisRange("monte-dourado", dateRange, channel, compareMode) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="monte-dourado" />)}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
                     {(() => { const visBrands = [brands.find(b=>b.id==="monte-dourado")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
@@ -2087,7 +2149,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                   </div>
                   <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                      {(getKpisRange("vila-chapeu", dateRange, channel) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="vila-chapeu" />)}
+                      {(getKpisRange("vila-chapeu", dateRange, channel, compareMode) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={80 + i * 50} brandId="vila-chapeu" />)}
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 8 }}>
                       {(() => { const visBrands = [brands.find(b=>b.id==="vila-chapeu")].filter(Boolean); const data = filteredChartData.map(r => ({ m: r.m, [visBrands[0]?.name]: r[`${visBrands[0]?.name}_alc`] || 0 }));
@@ -2124,7 +2186,7 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                   </div>
                   <div style={{ padding: mob ? "12px 10px" : "14px 14px" }}>
                     <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 6, marginBottom: 14 }}>
-                      {(getKpisRange("vila-morro", dateRange, channel) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={180 + i * 50} brandId="vila-morro" />)}
+                      {(getKpisRange("vila-morro", dateRange, channel, compareMode) || []).map((k, i) => <KpiCard key={k?.k || i} k={k} delay={180 + i * 50} brandId="vila-morro" />)}
                     </div>
                     <div style={{ ...card, padding: "12px 10px 6px" }}>
                       <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, fontFamily: "'Gotham',sans-serif" }}>Investimento mensal</div>
