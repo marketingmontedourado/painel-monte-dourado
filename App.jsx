@@ -87,17 +87,18 @@ function brandFromCampaign(name) {
 }
 
 // Mapeamento estável por ig_user_id (preferir ao username, que pode mudar)
+// IDs descobertos via /api/ig-list em 2026-05-19
 const igIdToBrand = {
-  // preencher conforme você confirmar os IDs (vem do response da Meta API)
-  // "17841401234567890": "monte-dourado",
-  // "17841405555555555": "vila-chapeu",
-  // "17841408888888888": "vila-morro",
+  "17841444901646600": "monte-dourado",   // @monte.dourado
+  "17841461445642698": "vila-chapeu",     // @viladochapeutaiba
+  "17841477537400355": "vila-morro",      // @viladomorro.taiba
 };
 
 // Fallback por username (legado — mantém pra retrocompatibilidade)
 const usernameToBrand = {
   "monte.dourado": "monte-dourado",
   "viladochapeutaiba": "vila-chapeu",
+  "viladomorro.taiba": "vila-morro",
   "viladomorro": "vila-morro",
   "viladailha": "vila-ilha",
 };
