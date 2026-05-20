@@ -1338,6 +1338,241 @@ function DateRangeSelector({ dateRange, setDateRange, C, mob }) {
   );
 }
 
+// =============== DIAGNÓSTICO GERAL DA EMPRESA ===============
+// Calcula score de saúde digital (0-10) com base em 4 dimensões.
+function calculateHealthScore(dateRange, channel, db, allPeriods) {
+  const periodsInRange = filterPeriodsInRange(allPeriods, dateRange);
+  if (!periodsInRange.length) return null;
+
+  const allBrands = ["monte-dourado", "vila-chapeu", "vila-morro"];
+  // Agregar dados das 3 marcas no range
+  let totalAlc = 0, totalInter = 0, totalInv = 0, totalMsgs = 0, totalSegStart = 0, totalSegEnd = 0;
+  let monthsWithData = 0;
+  allBrands.forEach(bid => {
+    let firstSeg = null, lastSeg = null;
+    periodsInRange.forEach(pk => {
+      const d = db[bid]?.[pk];
+      if (!d) return;
+      monthsWithData++;
+      totalAlc += d.alc || 0;
+      totalInter += d.inter || 0;
+      totalInv += d.inv || 0;
+      totalMsgs += d.msgs || 0;
+      if (d.seg) {
+        if (firstSeg == null) firstSeg = d.seg;
+        lastSeg = d.seg;
+      }
+    });
+    if (firstSeg) totalSegStart += firstSeg;
+    if (lastSeg) totalSegEnd += lastSeg;
+  });
+  if (monthsWithData === 0) return null;
+
+  // 1. Engajamento (interações / alcance) — alvo 5%
+  const engagementRate = totalAlc > 0 ? (totalInter / totalAlc) * 100 : 0;
+  const scoreEngagement = Math.min(10, Math.max(0, (engagementRate / 5) * 10));
+
+  // 2. Crescimento de seguidores (variação no período) — alvo +5%
+  const growthRate = totalSegStart > 0 ? ((totalSegEnd - totalSegStart) / totalSegStart) * 100 : 0;
+  const scoreGrowth = Math.min(10, Math.max(0, ((growthRate + 5) / 10) * 10));
+
+  // 3. Alcance médio mensal — alvo: 100K/mês = 10
+  const avgReachMonth = totalAlc / periodsInRange.length;
+  const scoreReach = Math.min(10, Math.max(0, (avgReachMonth / 100000) * 10));
+
+  // 4. ROI (msgs por R$) — alvo: 0.05 msgs/R$ = 10
+  const roi = totalInv > 0 ? totalMsgs / totalInv : 0;
+  const scoreRoi = Math.min(10, Math.max(0, (roi / 0.05) * 10));
+
+  // Score geral: média ponderada
+  const general = (scoreEngagement * 0.30 + scoreGrowth * 0.25 + scoreReach * 0.25 + scoreRoi * 0.20);
+
+  let status = "saudavel";
+  if (general < 4) status = "critico";
+  else if (general < 6.5) status = "atencao";
+
+  return {
+    general: +general.toFixed(1),
+    engagement: +scoreEngagement.toFixed(1),
+    growth: +scoreGrowth.toFixed(1),
+    reach: +scoreReach.toFixed(1),
+    roi: +scoreRoi.toFixed(1),
+    status,
+    raw: { engagementRate, growthRate, avgReachMonth, roi, totalSegEnd, totalAlc, totalInv, totalMsgs },
+  };
+}
+
+// Extrai destaques e alertas do período
+function extractHighlights(dateRange, liveData, db, allPeriods, healthScore) {
+  const periodsInRange = filterPeriodsInRange(allPeriods, dateRange);
+  const highlights = [];
+
+  // 1. Melhor post orgânico (todas as marcas)
+  const allMedia = (liveData?.organic?.accounts || []).flatMap(acc => (acc.media || []).map(m => ({ ...m, _brand: acc.username })));
+  if (allMedia.length > 0) {
+    const topPost = allMedia.reduce((best, m) => {
+      const reach = m.insights?.reach || 0;
+      const bestReach = best?.insights?.reach || 0;
+      return reach > bestReach ? m : best;
+    }, null);
+    if (topPost && topPost.insights?.reach > 0) {
+      highlights.push({
+        type: "star",
+        title: "Post mais visto do período",
+        value: `${(topPost.insights.reach).toLocaleString("pt-BR")} alcance`,
+        subtitle: `${topPost.media_type === "VIDEO" ? "🎬 Reel" : topPost.media_type === "CAROUSEL_ALBUM" ? "🖼️ Carrossel" : "📷 Foto"} em @${topPost._brand}`,
+        link: topPost.permalink,
+      });
+    }
+  }
+
+  // 2. Melhor campanha ativa (ROI)
+  const activeCamps = (liveData?.ads?.data || []).filter(r => r.campaign_status === "ACTIVE");
+  const byCamp = {};
+  activeCamps.forEach(r => {
+    const k = r.campaign_id;
+    if (!byCamp[k]) byCamp[k] = { id: k, name: r.campaign_name, spend: 0, msgs: 0 };
+    byCamp[k].spend += r.spend || 0;
+    byCamp[k].msgs += r.messages || 0;
+  });
+  const champCamp = Object.values(byCamp).filter(c => c.spend > 0 && c.msgs > 0).reduce((b, c) => {
+    const roi = c.msgs / c.spend;
+    const bestRoi = b ? b.msgs / b.spend : 0;
+    return !b || roi > bestRoi ? c : b;
+  }, null);
+  if (champCamp) {
+    const roi = champCamp.msgs / champCamp.spend;
+    highlights.push({
+      type: "star",
+      title: "Campanha campeã de ROI",
+      value: `${(1/roi).toFixed(2)} R$/msg`,
+      subtitle: `${champCamp.name?.slice(0, 50)} · ${champCamp.msgs} msgs`,
+    });
+  }
+
+  // 3. Crescimento de seguidores
+  if (healthScore && healthScore.raw) {
+    const { growthRate, totalSegEnd } = healthScore.raw;
+    if (Math.abs(growthRate) > 0.1) {
+      highlights.push({
+        type: growthRate > 0 ? "up" : "down",
+        title: growthRate > 0 ? "Crescimento de seguidores" : "Queda de seguidores",
+        value: `${growthRate > 0 ? "+" : ""}${growthRate.toFixed(1)}%`,
+        subtitle: `Total atual: ${totalSegEnd.toLocaleString("pt-BR")} seguidores`,
+      });
+    }
+  }
+
+  // 4. Alertas: custo/msg subindo
+  // (não disponível no nível agregado simples — pulando por enquanto)
+
+  return highlights;
+}
+
+function HealthScoreCard({ score, C, mob }) {
+  if (!score) return null;
+  const statusColors = {
+    saudavel: { bg: "#22c55e15", border: "#22c55e", label: "SAUDÁVEL", icon: "●" },
+    atencao:  { bg: "#eab30815", border: "#eab308", label: "ATENÇÃO",  icon: "▲" },
+    critico:  { bg: "#ef444415", border: "#ef4444", label: "CRÍTICO",  icon: "■" },
+  };
+  const s = statusColors[score.status];
+  const subscores = [
+    { label: "Engajamento", value: score.engagement },
+    { label: "Crescimento", value: score.growth },
+    { label: "Alcance", value: score.reach },
+    { label: "ROI", value: score.roi },
+  ];
+  return <div style={{ background: "rgba(0,0,0,0.2)", border: `1px solid ${C.glassBd}`, borderLeft: `3px solid ${s.border}`, borderRadius: 10, padding: mob ? "16px 14px" : "20px 22px", marginBottom: 12 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+      <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>◈ Diagnóstico digital · Score consolidado</div>
+    </div>
+    <div style={{ display: "flex", alignItems: "center", gap: mob ? 14 : 22, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: mob ? "10px 14px" : "12px 22px", background: s.bg, border: `1px solid ${s.border}40`, borderRadius: 10, minWidth: 130 }}>
+        <div style={{ fontSize: mob ? 36 : 48, fontWeight: 500, fontFamily: "'Marisa',serif", color: s.border, lineHeight: 1 }}>{score.general}<span style={{ fontSize: mob ? 16 : 22, color: C.mut, fontWeight: 400 }}>/10</span></div>
+        <div style={{ fontSize: 10, color: s.border, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginTop: 6, fontWeight: 600 }}>{s.icon} {s.label}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4, auto)", gap: mob ? 10 : 18, flex: 1 }}>
+        {subscores.map(sub => (
+          <div key={sub.label}>
+            <div style={{ fontSize: 9, color: C.mut, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif", marginBottom: 4 }}>{sub.label}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+              <div style={{ fontSize: mob ? 20 : 26, fontWeight: 500, fontFamily: "'Marisa',serif", color: sub.value >= 6.5 ? "#22c55e" : sub.value >= 4 ? "#eab308" : "#ef4444" }}>{sub.value}</div>
+              <div style={{ fontSize: 10, color: C.mut }}>/10</div>
+            </div>
+            <div style={{ width: mob ? 80 : 110, height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, marginTop: 4, overflow: "hidden" }}>
+              <div style={{ width: `${sub.value * 10}%`, height: "100%", background: sub.value >= 6.5 ? "#22c55e" : sub.value >= 4 ? "#eab308" : "#ef4444", borderRadius: 2, transition: "width 0.6s" }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>;
+}
+
+function HighlightsCard({ highlights, C, mob }) {
+  if (!highlights || !highlights.length) return null;
+  const iconFor = (t) => t === "star" ? "★" : t === "up" ? "▲" : t === "down" ? "▼" : t === "warn" ? "⚠" : "●";
+  const colorFor = (t) => t === "star" ? C.dourado : t === "up" ? "#22c55e" : t === "down" ? "#ef4444" : t === "warn" ? "#eab308" : C.sec;
+  return <div style={{ background: "rgba(0,0,0,0.15)", border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: mob ? "14px" : "18px 22px", marginBottom: 12 }}>
+    <div style={{ fontSize: 9, color: C.douDim, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif", marginBottom: 14 }}>▣ Destaques do período</div>
+    <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 10 }}>
+      {highlights.map((h, i) => {
+        const Wrap = h.link ? "a" : "div";
+        const wrapProps = h.link ? { href: h.link, target: "_blank", rel: "noreferrer" } : {};
+        return <Wrap key={i} {...wrapProps} style={{ display: "block", textDecoration: "none", color: "inherit", padding: "12px 14px", background: "rgba(255,255,255,0.02)", border: `1px solid ${C.borderL}`, borderLeft: `3px solid ${colorFor(h.type)}`, borderRadius: 6, cursor: h.link ? "pointer" : "default", transition: "background 0.15s" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <span style={{ color: colorFor(h.type), fontSize: 11 }}>{iconFor(h.type)}</span>
+            <span style={{ fontSize: 9, color: C.mut, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "'Gotham',sans-serif" }}>{h.title}</span>
+          </div>
+          <div style={{ fontSize: mob ? 14 : 16, fontWeight: 500, fontFamily: "'Marisa',serif", color: C.text, marginBottom: 2 }}>{h.value}</div>
+          <div style={{ fontSize: 10, color: C.sec, fontFamily: "'Gotham',sans-serif" }}>{h.subtitle}</div>
+        </Wrap>;
+      })}
+    </div>
+  </div>;
+}
+
+function GeneralAiSummary({ dateRange, liveData, healthScore, highlights, C, mob }) {
+  const [aiText, setAiText] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const fetchAi = async () => {
+    setLoading(true);
+    try {
+      const summary = [];
+      if (healthScore) {
+        summary.push(`Score geral: ${healthScore.general}/10 (${healthScore.status === "saudavel" ? "saudável" : healthScore.status === "atencao" ? "atenção" : "crítico"}). Engajamento: ${healthScore.engagement}/10. Crescimento: ${healthScore.growth}/10. Alcance: ${healthScore.reach}/10. ROI: ${healthScore.roi}/10.`);
+        summary.push(`Total no período: ${healthScore.raw.totalSegEnd.toLocaleString("pt-BR")} seguidores, ${healthScore.raw.totalAlc.toLocaleString("pt-BR")} alcance, R$ ${healthScore.raw.totalInv.toLocaleString("pt-BR")} investidos, ${healthScore.raw.totalMsgs.toLocaleString("pt-BR")} mensagens.`);
+      }
+      const payload = {
+        type: "general_company",
+        scoreData: healthScore,
+        highlights,
+        accounts: (liveData?.organic?.accounts || []).map(a => ({ username: a.username, followers: a.followers_count, posts: a.media_count, insights: a.insights_summary })),
+        activeCampaigns: (liveData?.ads?.data || []).filter(r => r.campaign_status === "ACTIVE").length,
+      };
+      const r = await fetch("/api/conclusion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: payload, period: `Período selecionado: ${dateRange?.since} a ${dateRange?.until}`, brand: "Monte Dourado Incorporações — Visão consolidada", question: "Faça um resumo executivo da saúde digital geral da empresa, citando pontos fortes, oportunidades e alertas. Seja objetiva e direta." }) });
+      const j = await r.json();
+      setAiText(j.conclusion || j.error || "Erro ao gerar resumo.");
+    } catch (e) {
+      setAiText(`Erro: ${e?.message || "Desconhecido"}`);
+    }
+    setLoading(false);
+  };
+  return <div style={{ background: "linear-gradient(135deg, rgba(196,167,108,0.06), rgba(0,0,0,0.15))", border: `1px solid ${C.glassBd}`, borderRadius: 10, padding: mob ? "16px 14px" : "20px 22px", marginBottom: 12, position: "relative", overflow: "hidden" }}>
+    <div style={{ position: "absolute", top: -30, right: -30, width: 160, height: 160, background: `radial-gradient(circle,${C.dourado}25,transparent 70%)`, pointerEvents: "none" }} />
+    <div style={{ position: "relative", zIndex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.dourado }} />
+        <span style={{ fontSize: 9, color: C.dourado, letterSpacing: "0.14em", textTransform: "uppercase", fontFamily: "'Marisa',serif" }}>Resumo executivo da empresa</span>
+      </div>
+      {!aiText && <p style={{ fontSize: mob ? 11 : 12, color: "rgba(245,240,228,0.6)", lineHeight: 1.6, fontFamily: "'Gotham',sans-serif", marginBottom: 12, fontStyle: "italic" }}>Clique pra gerar uma análise IA da saúde digital consolidada das três marcas — destaques, oportunidades e alertas executivos.</p>}
+      {aiText && <p style={{ fontSize: mob ? 11 : 12, color: "rgba(245,240,228,0.9)", lineHeight: 1.7, fontFamily: "'Gotham',sans-serif", whiteSpace: "pre-line", marginBottom: 12 }}>{aiText}</p>}
+      <button onClick={fetchAi} disabled={loading} style={{ padding: "8px 16px", fontSize: 10, borderRadius: 6, border: `1px solid ${C.dourado}50`, background: C.dourado + "20", color: "#F5F0E4", cursor: loading ? "wait" : "pointer", fontFamily: "'Gotham',sans-serif", letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 500 }}>{loading ? "Gerando..." : aiText ? "Regenerar análise" : "Gerar análise com IA"}</button>
+    </div>
+  </div>;
+}
+
 function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
   const [liveSyncAt, setLiveSyncAt] = useState(null);
   const [liveError, setLiveError] = useState(null);
@@ -1351,28 +1586,34 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
     const apiKey = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_MD_API_KEY) || "";
     const apiFetch = (url) => fetch(url, { headers: { "x-md-key": apiKey } }).then(r => r.json()).catch(e => ({ success: false, error: e?.message }));
 
-    const adsUrl = `/api/meta-ads?since=${dateRange.since}&until=${dateRange.until}`;
-    Promise.all([
-      apiFetch(adsUrl),
-      apiFetch("/api/meta-organic"),
-      apiFetch("/api/meta-ads-creatives"),
-    ]).then(([adsResp, orgResp, creativesResp]) => {
-      if (cancelled) return;
-      try {
-        applyMetaOverlay(adsResp, orgResp);
-        setLiveData({ ads: adsResp, organic: orgResp, creatives: creativesResp });
-        setLiveSyncAt(new Date());
-        if (!adsResp?.success && !orgResp?.success) {
-          setLiveError(adsResp?.error || orgResp?.error || "Erro desconhecido");
-        } else {
-          // Bug #4 fix: limpa erro anterior quando recebemos dados válidos
-          setLiveError(null);
+    const doFetch = () => {
+      const adsUrl = `/api/meta-ads?since=${dateRange.since}&until=${dateRange.until}`;
+      Promise.all([
+        apiFetch(adsUrl),
+        apiFetch("/api/meta-organic"),
+        apiFetch("/api/meta-ads-creatives"),
+      ]).then(([adsResp, orgResp, creativesResp]) => {
+        if (cancelled) return;
+        try {
+          applyMetaOverlay(adsResp, orgResp);
+          setLiveData({ ads: adsResp, organic: orgResp, creatives: creativesResp });
+          setLiveSyncAt(new Date());
+          if (!adsResp?.success && !orgResp?.success) {
+            setLiveError(adsResp?.error || orgResp?.error || "Erro desconhecido");
+          } else {
+            setLiveError(null);
+          }
+        } catch (e) {
+          setLiveError(e?.message || "Erro ao aplicar overlay");
         }
-      } catch (e) {
-        setLiveError(e?.message || "Erro ao aplicar overlay");
-      }
-    });
-    return () => { cancelled = true; };
+      });
+    };
+
+    // 1ª chamada imediata + auto-refresh a cada 15 minutos
+    doFetch();
+    const intervalId = setInterval(doFetch, 15 * 60 * 1000);
+
+    return () => { cancelled = true; clearInterval(intervalId); };
   }, [dateRange.since, dateRange.until]);
   const mob = useM();
   useEffect(() => { const s = document.createElement("style"); s.textContent = FONT_CSS; document.head.appendChild(s); return () => s.remove(); }, []);
@@ -1571,6 +1812,10 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
                 {tab === "monte-dourado" ? "Monte Dourado" : tab === "empreendimentos" ? "Empreendimentos" : tab === "financeiro" ? "Financeiro" : "Eventos"}
               </span>
               <span style={{ fontSize: 9, color: C.mut, padding: "3px 8px", background: "rgba(255,255,255,0.04)", borderRadius: 4, fontFamily: "'Gotham',sans-serif" }}>{getPeriodLabel(period)}</span>
+              {liveSyncAt && <span style={{ fontSize: 9, color: C.mut, fontFamily: "'Gotham',sans-serif", display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} />
+                Atualizado {liveSyncAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · re-sync 15 min
+              </span>}
             </div>}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -2073,6 +2318,17 @@ function SocioView({ onSwitch, onAdmin, C, mode, toggle, user }) {
               <ChannelToggle channel={channel} setChannel={setChannel} C={C} mob={mob} />
               <CompareSelect compareMode={compareMode} setCompareMode={setCompareMode} C={C} mob={mob} />
             </div>
+
+            {/* DIAGNÓSTICO GERAL DA EMPRESA — só aparece na aba Monte Dourado */}
+            {tab === "monte-dourado" && (() => {
+              const healthScore = calculateHealthScore(dateRange, channel, db, allPeriods);
+              const highlights = extractHighlights(dateRange, liveData, db, allPeriods, healthScore);
+              return <>
+                <HealthScoreCard score={healthScore} C={C} mob={mob} />
+                <HighlightsCard highlights={highlights} C={C} mob={mob} />
+                <GeneralAiSummary dateRange={dateRange} liveData={liveData} healthScore={healthScore} highlights={highlights} C={C} mob={mob} />
+              </>;
+            })()}
 
             {/* ============================================
                 ABA MONTE DOURADO — card compacto + drill-down
