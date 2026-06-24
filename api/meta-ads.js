@@ -14,6 +14,30 @@
 //   until=YYYY-MM-DD      → data final (default: hoje)
 //   level=campaign|adset|ad   → granularidade (default: campaign)
 
+import crypto from "crypto";
+
+const COOKIE_NAME = "md_session";
+function readSession(req) {
+  const secret = process.env.MD_SESSION_SECRET;
+  if (!secret) return null;
+  const header = req.headers.cookie || "";
+  let cookieValue = null;
+  for (const p of header.split(";").map((s) => s.trim())) {
+    if (p.startsWith(`${COOKIE_NAME}=`)) { cookieValue = p.slice(COOKIE_NAME.length + 1); break; }
+  }
+  if (!cookieValue || !cookieValue.includes(".")) return null;
+  const [body, sig] = cookieValue.split(".");
+  if (!body || !sig) return null;
+  const expected = crypto.createHmac("sha256", secret).update(body).digest("base64url");
+  try {
+    const a = Buffer.from(sig), b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf-8"));
+    if (payload.exp && payload.exp < Date.now()) return null;
+    return payload;
+  } catch { return null; }
+}
+
 const META_API_VERSION = "v22.0";
 const GRAPH_URL = `https://graph.facebook.com/${META_API_VERSION}`;
 
@@ -32,11 +56,8 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "GET") return res.status(405).json({ error: "Método não permitido" });
 
-  // --- Auth: header x-md-key ---
-  const expectedKey = process.env.MD_API_KEY;
-  if (!expectedKey) return res.status(500).json({ error: "MD_API_KEY não configurada no servidor" });
-  const sentKey = req.headers["x-md-key"] || req.query.key;
-  if (sentKey !== expectedKey) return res.status(401).json({ error: "Não autorizado" });
+  // --- Auth (sessão por cookie HttpOnly; antes era x-md-key exposto no bundle Vite) ---
+  if (!readSession(req)) return res.status(401).json({ error: "Não autorizado" });
 
   // --- Rate limit por IP ---
   const ip = (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").toString().split(",")[0].trim();

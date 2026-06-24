@@ -4,10 +4,34 @@
 //
 // Chamada: GET /api/ig-list  (header x-md-key obrigatório)
 
+import crypto from "crypto";
+
 const ALLOWED_ORIGINS = [
   "https://painel-monte-dourado.vercel.app",
   "http://localhost:5173"
 ];
+
+const COOKIE_NAME = "md_session";
+function readSession(req) {
+  const secret = process.env.MD_SESSION_SECRET;
+  if (!secret) return null;
+  const header = req.headers.cookie || "";
+  let cookieValue = null;
+  for (const p of header.split(";").map((s) => s.trim())) {
+    if (p.startsWith(`${COOKIE_NAME}=`)) { cookieValue = p.slice(COOKIE_NAME.length + 1); break; }
+  }
+  if (!cookieValue || !cookieValue.includes(".")) return null;
+  const [body, sig] = cookieValue.split(".");
+  if (!body || !sig) return null;
+  const expected = crypto.createHmac("sha256", secret).update(body).digest("base64url");
+  try {
+    const a = Buffer.from(sig), b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf-8"));
+    if (payload.exp && payload.exp < Date.now()) return null;
+    return payload;
+  } catch { return null; }
+}
 
 export default async function handler(req, res) {
   const origin = req.headers.origin;
@@ -21,9 +45,8 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "GET") return res.status(405).json({ error: "method_not_allowed" });
 
-  // Auth: x-md-key header (mesma chave usada nas outras APIs)
-  const apiKey = req.headers["x-md-key"];
-  if (!apiKey || apiKey !== process.env.MD_API_KEY) {
+  // Auth: sessão por cookie HttpOnly (antes era x-md-key exposto no bundle Vite)
+  if (!readSession(req)) {
     return res.status(401).json({ error: "unauthorized" });
   }
 
